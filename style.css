@@ -118,7 +118,7 @@ nav {
 /* ===== HERO SECTION ===== */
 #hero {
     height: 100vh;
-    background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(DATA\ GAMBAR\ WEB\ BANK\ SAMPAH/mainsampah.jpeg) no-repeat center center/cover;
+    background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(mainsampah.jpeg) no-repeat center center/cover;
     color: var(--white-color);
     display: flex;
     justify-content: center;
