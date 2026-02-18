@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - EcoBank</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --admin-bg: #f8fafc;
+            --sidebar-bg: #ffffff;
+            --accent: #10B981;
+            --accent-dark: #059669;
+            --accent-light: #d1fae5;
+            --text-dark: #0f172a;
+            --text-muted: #64748b;
+            --card-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --info: #3b82f6;
+            --info-light: #dbeafe;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
+        body { background: var(--admin-bg); height: 100vh; overflow: hidden; display: flex; color: var(--text-dark); }
+
+        /* Security Screen */
+        #securityScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; color: white; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .spinner { width: 50px; height: 50px; border: 4px solid rgba(16, 185, 129, 0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1.5rem;}
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* Layout & Sidebar */
+        #adminBody { display: none; width: 100%; height: 100%; }
+        .sidebar { width: 280px; background: var(--sidebar-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; z-index: 1000; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: var(--shadow-md);}
+        .sidebar-header { padding: 1.5rem 2rem; font-size: 1.5rem; font-weight: 800; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px;}
+        .sidebar-header .icon { background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: white; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center; border-radius: 10px; font-size: 1.2rem; box-shadow: 0 4px 10px rgba(16,185,129,0.3);}
+        .sidebar-header span { color: var(--accent); }
+        
+        .menu { list-style: none; padding: 1.5rem 1rem; width: 100%; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto;}
+        .menu li { padding: 1rem 1.2rem; cursor: pointer; transition: all 0.3s ease; color: var(--text-muted); font-weight: 600; border-radius: 12px; display: flex; align-items: center; gap: 12px; font-size: 0.95rem;}
+        .menu li:hover { background: var(--admin-bg); color: var(--text-dark); transform: translateX(5px);}
+        .menu li.active { background: var(--accent-light); color: var(--accent-dark); }
+        .menu li.active .menu-icon { transform: scale(1.1); }
+        
+        .admin-profile-bottom { margin-top: auto; padding: 1.5rem; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem; background: #f8fafc;}
+        .admin-profile-bottom .avatar { width: 42px; height: 42px; background: var(--text-dark); color: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; font-size: 1.1rem;}
+
+        /* Overlay Mobile */
+        #sidebarOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); z-index: 999; opacity: 0; transition: opacity 0.3s; }
+
+        /* Main Content */
+        .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { background: var(--card-bg); padding: 1.2rem 2.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; z-index: 10;}
+        .topbar-title { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px;}
+        .btn-back { background: var(--danger-light); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); padding: 0.6rem 1.2rem; border-radius: 50px; font-weight: 700; cursor: pointer; text-decoration: none; font-size: 0.9rem; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 6px;}
+        .btn-back:hover { background: var(--danger); color: white; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);}
+
+        .main-content { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; background: var(--admin-bg); }
+        .tab-content { display: none; animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        .tab-content.active { display: block; }
+
+        /* Dashboard Stats */
+        .dashboard-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .stat-box { background: var(--card-bg); padding: 1.5rem; border-radius: 20px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); transition: transform 0.3s ease, box-shadow 0.3s ease; position: relative; overflow: hidden;}
+        .stat-box:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); }
+        .stat-box h4 { color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; font-size: 0.95rem; display: flex; align-items: center; justify-content: space-between;}
+        .stat-box h2 { font-size: 2.2rem; color: var(--text-dark); font-weight: 800; }
+        .stat-icon { font-size: 1.5rem; opacity: 0.8; }
+
+        /* Table Styling */
+        .table-container { background: var(--card-bg); padding: 2rem; border-radius: 24px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); margin-bottom: 2rem;}
+        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;}
+        .table-header h3 { font-weight: 800; font-size: 1.3rem; letter-spacing: -0.5px;}
+        
+        .table-responsive { overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; border-radius: 12px; border: 1px solid var(--border-color);}
+        table { width: 100%; border-collapse: collapse; min-width: 800px; background: white;}
+        th, td { padding: 1.2rem; text-align: left; border-bottom: 1px solid var(--border-color); }
+        th { background: #f8fafc; color: var(--text-muted); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 1;}
+        tr:hover td { background: #f8fafc; }
+        td { font-size: 0.95rem; font-weight: 500;}
+        
+        /* Badges */
+        .badge { padding: 0.4rem 0.8rem; border-radius: 50px; font-size: 0.75rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;}
+        .badge-online { background: var(--accent-light); color: var(--accent-dark); }
+        .badge-offline { background: var(--border-color); color: var(--text-muted); }
+        .badge-pending { background: var(--warning-light); color: #d97706; }
+        .badge-success { background: var(--accent-light); color: var(--accent-dark); }
+        .badge-reject { background: var(--danger-light); color: var(--danger); }
+        .badge-info { background: var(--info-light); color: var(--info); }
+
+        /* Buttons Action */
+        .btn-action { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; font-size: 0.85rem; border: none; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px;}
+        .btn-verify { background: var(--accent); color: white; box-shadow: 0 2px 4px rgba(16,185,129,0.2);}
+        .btn-verify:hover { background: var(--accent-dark); transform: translateY(-2px); box-shadow: 0 4px 6px rgba(16,185,129,0.3);}
+        .btn-reject { background: white; color: var(--danger); border: 1px solid var(--danger);}
+        .btn-reject:hover { background: var(--danger-light); transform: translateY(-2px);}
+        .btn-refresh { background: white; border: 1px solid var(--border-color); color: var(--text-dark);}
+        .btn-refresh:hover { background: var(--admin-bg); border-color: #cbd5e1;}
+        .btn-map { background: var(--info-light); color: var(--info); border: 1px solid var(--info); padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.8rem; text-decoration: none;}
+        .btn-map:hover { background: var(--info); color: white;}
+
+        /* TOAST NOTIFICATION */
+        #toastBox { position: fixed; top: 20px; right: 20px; transform: translateX(120%); background: #1e293b; color: white; padding: 1rem 1.5rem; border-radius: 16px; border-left: 5px solid var(--accent); box-shadow: var(--shadow-lg); z-index: 10000; display: flex; align-items: center; gap: 12px; min-width: 300px; max-width: 90%; transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #toastBox.show { transform: translateX(0); }
+        #toastBox.error { border-left-color: var(--danger); }
+        #toastBox.warning { border-left-color: var(--warning); }
+
+        /* MODALS */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); z-index: 2000; justify-content: center; align-items: center; padding: 1rem; opacity: 0; transition: opacity 0.3s;}
+        .modal.show { opacity: 1; }
+        .modal-content { background: white; padding: 2.5rem; border-radius: 24px; width: 100%; max-width: 500px; transform: translateY(20px) scale(0.95); transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);}
+        .modal.show .modal-content { transform: translateY(0) scale(1); }
+        .modal-content::-webkit-scrollbar { width: 4px; }
+        .modal-content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 10px; }
+        
+        .input-group { margin-bottom: 1.5rem; text-align: left; }
+        .input-group label { display: block; font-size: 0.85rem; color: var(--text-muted); font-weight: 700; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;}
+        .input-group input { width: 100%; padding: 1rem; border: 2px solid var(--border-color); border-radius: 12px; font-size: 1rem; outline: none; transition: 0.3s; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; color: var(--text-dark);}
+        .input-group input:focus { border-color: var(--accent); background: var(--accent-light); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);}
+        
+        .modal-details { background: var(--admin-bg); padding: 1.5rem; border-radius: 16px; margin-bottom: 2rem; border: 1px solid var(--border-color);}
+        .modal-details strong { display:block; margin-bottom:0.5rem; color: var(--text-dark); font-size: 1.2rem; font-weight: 800;}
+        .modal-details span { color: var(--text-muted); font-weight: 600; font-size: 0.95rem; display: block; margin-bottom: 0.2rem;}
+        .modal-details .highlight { color: var(--accent-dark); font-weight: 800; font-size: 1.1rem; margin-top: 0.5rem;}
+        
+        /* Thumbnail Photo Styling */
+        .photo-preview-container { width: 100%; height: 180px; border-radius: 12px; overflow: hidden; background: #e2e8f0; margin-top: 10px; position: relative; border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center;}
+        .photo-preview-container img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; transition: 0.3s; }
+        .photo-preview-container img:hover { transform: scale(1.05); }
+        .photo-placeholder { color: var(--text-muted); font-size: 0.85rem; font-weight: 600;}
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .mobile-toggle { display: none; cursor: pointer; font-size: 1.5rem; padding: 0.5rem; background: var(--admin-bg); border-radius: 8px; color: var(--text-dark);}
+
+        @media (max-width: 768px) {
+            .sidebar { position: fixed; transform: translateX(-100%); height: 100%; box-shadow: 10px 0 30px rgba(0,0,0,0.1); }
+            .sidebar.open { transform: translateX(0); }
+            #sidebarOverlay.show { display: block; opacity: 1; }
+            .mobile-toggle { display: flex; align-items: center; justify-content: center; }
+            .topbar { padding: 1rem 1.5rem; }
+            .topbar-title { font-size: 1.1rem; }
+            .main-content { padding: 1.5rem 1rem; }
+            .table-container { padding: 1.5rem 1rem; }
+            .table-header { flex-direction: column; align-items: flex-start; }
+            .btn-back span { display: none; } 
+            .dashboard-stats { grid-template-columns: 1fr; }
+            .modal-btn-group { flex-direction: column; gap: 0.8rem;}
+            .modal-btn-group button { width: 100%; margin: 0 !important; padding: 1rem;}
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toastBox">
+        <span class="toast-icon">ℹ️</span>
+        <span id="toastMsg">Notifikasi</span>
+    </div>
+
+    <div id="securityScreen">
+        <div class="spinner"></div>
+        <h2 style="font-weight: 800; font-size: 1.8rem; margin-bottom: 0.5rem;">Otorisasi Admin...</h2>
+        <p style="color: #94a3b8;">Memverifikasi kredensial keamanan Anda.</p>
+    </div>
+
+    <div id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <div id="adminBody">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="icon">E</div>
+                <div>Admin<span style="color: var(--text-dark);">Panel</span></div>
+            </div>
+            <ul class="menu">
+                <li class="active" onclick="switchTab('tab-dashboard', this)"><span class="menu-icon">📊</span> Ringkasan Sistem</li>
+                <li onclick="switchTab('tab-trx', this)"><span class="menu-icon">⚖️</span> Setoran Sampah</li>
+                <li onclick="switchTab('tab-redemptions', this)"><span class="menu-icon">💰</span> Penarikan Poin</li>
+                <li onclick="switchTab('tab-users', this)"><span class="menu-icon">👥</span> Tracking Member</li>
+            </ul>
+            <div class="admin-profile-bottom">
+                <div class="avatar" id="adminAvatarInit">A</div>
+                <div>
+                    <h4 style="font-size: 0.95rem; font-weight: 800;" id="adminNameDisplay">Admin Name</h4>
+                    <p style="font-size: 0.8rem; color: var(--accent-dark); font-weight: 600;">Super Administrator</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-wrapper">
+            <div class="topbar">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div class="mobile-toggle" onclick="toggleSidebar()">☰</div>
+                    <div class="topbar-title" id="topbarTitle">Ringkasan Sistem</div>
+                </div>
+                <a href="#" class="btn-back" onclick="logoutAdmin()">🚪 <span>Keluar Panel</span></a>
+            </div>
+
+            <div class="main-content">
+                
+                <div id="tab-dashboard" class="tab-content active">
+                    <div class="dashboard-stats">
+                        <div class="stat-box">
+                            <h4>Setoran Menunggu <span class="stat-icon">⚖️</span></h4>
+                            <h2 id="statPendingTrx" style="color: var(--warning);">0</h2>
+                        </div>
+                        <div class="stat-box">
+                            <h4>Pengajuan Cair Poin <span class="stat-icon">💰</span></h4>
+                            <h2 id="statPendingRedeem" style="color: var(--info);">0</h2>
+                        </div>
+                        <div class="stat-box">
+                            <h4>Transaksi Selesai <span class="stat-icon">✅</span></h4>
+                            <h2 id="statSuccessTrx" style="color: var(--accent);">0</h2>
+                        </div>
+                        <div class="stat-box">
+                            <h4>Member Online <span class="stat-icon">👥</span></h4>
+                            <h2 id="statOnlineUsers">0</h2>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <div class="table-header">
+                            <h3>Riwayat Semua Transaksi (Setor & Tarik)</h3>
+                            <button class="btn-action btn-refresh" onclick="fetchAllData()">🔄 Refresh Data</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead><tr><th>Tgl & Waktu</th><th>Tipe Aktivitas</th><th>Nama Member</th><th>Detail</th><th>Nominal Poin</th><th>Status</th></tr></thead>
+                                <tbody id="allActivityTableBody">
+                                    <tr><td colspan="6" style="text-align:center; padding: 3rem; color: var(--text-muted);">Memuat riwayat aktivitas sistem...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-trx" class="tab-content">
+                    <div class="table-container">
+                        <div class="table-header">
+                            <h3>Antrean Verifikasi Setoran</h3>
+                            <button class="btn-action btn-refresh" onclick="fetchTransactions()">🔄 Refresh</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Waktu Pengajuan</th>
+                                        <th>Nama Member</th>
+                                        <th>Jenis Sampah</th>
+                                        <th>Lokasi Jemput</th>
+                                        <th>Potensi Poin</th>
+                                        <th>Aksi Admin</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pendingTrxTableBody">
+                                    <tr><td colspan="6" style="text-align:center; padding: 3rem; color: var(--text-muted);">Memuat data antrean...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-redemptions" class="tab-content">
+                    <div class="table-container" style="border-top: 4px solid var(--info);">
+                        <div class="table-header">
+                            <h3>Antrean Pencairan Poin</h3>
+                            <button class="btn-action btn-refresh" onclick="fetchRedemptions()">🔄 Refresh</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Waktu Pengajuan</th>
+                                        <th>Nama Member</th>
+                                        <th>Nominal Pencairan</th>
+                                        <th>Tujuan (E-Wallet/Bank)</th>
+                                        <th>Aksi Admin</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pendingRedeemTableBody">
+                                    <tr><td colspan="5" style="text-align:center; padding: 3rem; color: var(--text-muted);">Memuat data antrean pencairan...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-users" class="tab-content">
+                    <div class="table-container">
+                        <div class="table-header">
+                            <h3>Live Tracking Member</h3>
+                            <button class="btn-action btn-refresh" onclick="fetchUsers(true)">🔄 Refresh</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead><tr><th>Nama Member</th><th>ID Akun</th><th>Kontak / WA</th><th>Status Online</th><th>Terakhir Terlihat</th></tr></thead>
+                                <tbody id="usersTableBody">
+                                     <tr><td colspan="5" style="text-align:center; padding: 3rem; color: var(--text-muted);">Memuat data pengguna...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="verifyModal">
+        <div class="modal-content">
+            <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text-dark); font-weight: 800;">Verifikasi Setoran</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">Cek foto, alamat penjemputan, dan sesuaikan berat aktual.</p>
+            
+            <input type="hidden" id="modalTrxId">
+            <input type="hidden" id="modalUserId">
+            <input type="hidden" id="modalPricePerKg">
+
+            <div class="modal-details">
+                <strong id="modalUserName">Nama Member</strong>
+                <span>Kategori: <b id="modalWasteType" style="color:var(--text-dark);">Jenis Sampah</b></span>
+                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--border-color);">
+                    <span style="font-size: 0.8rem; text-transform: uppercase;">Alamat Penjemputan:</span>
+                    <span id="modalAddress" style="color: var(--text-dark); font-weight: 500; font-size: 0.9rem; line-height: 1.4;">Tidak ada data alamat.</span>
+                    <div id="modalMapBtnContainer" style="margin-top: 8px;"></div>
+                </div>
+            </div>
+            
+            <div class="input-group">
+                <label>Foto Bukti Sampah</label>
+                <div class="photo-preview-container" id="modalPhotoContainer">
+                    <span class="photo-placeholder">Tidak ada foto terlampir</span>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Berat Aktual Timbangan Kurir (Kg/L)</label>
+                <input type="number" id="modalActualWeight" step="0.1" oninput="recalculatePoints()" placeholder="Contoh: 5.5">
+            </div>
+            
+            <div class="input-group">
+                <label>Poin Final Untuk Member</label>
+                <input type="number" id="modalActualPoints" readonly style="background: var(--accent-light); color: var(--accent-dark); border-color: var(--accent);">
+            </div>
+
+            <div class="modal-btn-group" style="display: flex; gap: 12px; margin-top: 1rem;">
+                <button class="btn-action btn-reject" style="flex: 1; padding: 1rem;" onclick="processTransaction('ditolak')">Tolak Data</button>
+                <button class="btn-action btn-verify" style="flex: 1; padding: 1rem;" onclick="processTransaction('diterima')">ACC & Kirim Poin</button>
+            </div>
+            <button class="btn-action btn-refresh" style="width:100%; margin-top: 10px; padding: 1rem;" onclick="closeModal('verifyModal')">Batal / Tutup</button>
+        </div>
+    </div>
+
+    <div class="modal" id="redeemModal">
+        <div class="modal-content" style="border-top: 6px solid var(--info);">
+            <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text-dark); font-weight: 800;">Proses Tarik Saldo</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">Konfirmasi bukti transfer Anda sebelum mengubah status.</p>
+            
+            <input type="hidden" id="modalRedeemId">
+            <input type="hidden" id="modalRedeemUserId">
+            <input type="hidden" id="modalRedeemAmountVal">
+
+            <div class="modal-details">
+                <strong id="modalRedeemUserName">Nama Member</strong>
+                <span>Tujuan Transfer:</span>
+                <span id="modalRedeemDest" style="color: var(--text-dark); font-weight: 700; font-size: 1rem; background: white; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); display: inline-block; margin-top: 5px;">DANA - 0812xxx</span>
+                <div class="highlight" id="modalRedeemAmountDisplay">Rp 100.000</div>
+            </div>
+
+            <div class="modal-btn-group" style="display: flex; gap: 12px;">
+                <button class="btn-action btn-reject" style="flex: 1; padding: 1rem;" onclick="processRedemption('ditolak')">Tolak & Refund Poin</button>
+                <button class="btn-action btn-verify" style="flex: 1; padding: 1rem; background: var(--info); box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);" onclick="processRedemption('berhasil')">Tandai Berhasil Transfer</button>
+            </div>
+            <button class="btn-action btn-refresh" style="width: 100%; margin-top: 12px; padding: 1rem;" onclick="closeModal('redeemModal')">Batal / Tutup</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. SUPABASE CONFIGURATION
+        // ==========================================
+        const SUPABASE_URL = 'https://yzerautfyyfhldzpwyiy.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_JA9cuYEGjfGSyVQgwktrkA_-4RQLFgN';
+        const supaClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let globalProfileDict = {}; // Cache untuk menyimpan mapping ID User -> Nama
+
+        // ==========================================
+        // TOAST NOTIFICATION SYSTEM
+        // ==========================================
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toastBox');
+            toast.querySelector('#toastMsg').textContent = message;
+            
+            toast.className = ''; 
+            if(type === 'error') {
+                toast.classList.add('error', 'show');
+                toast.querySelector('.toast-icon').textContent = '❌';
+            } else if (type === 'warning') {
+                toast.classList.add('warning', 'show');
+                toast.querySelector('.toast-icon').textContent = '⚠️';
+            } else if(type === 'info') {
+                toast.classList.add('show');
+                toast.querySelector('.toast-icon').textContent = 'ℹ️';
+                toast.style.borderLeftColor = '#3b82f6';
+            } else {
+                toast.classList.add('success', 'show');
+                toast.querySelector('.toast-icon').textContent = '✅';
+            }
+
+            setTimeout(() => { toast.classList.remove('show'); }, 3500);
+        }
+
+        // ==========================================
+        // SECURITY GUARD & INIT
+        // ==========================================
+        window.onload = async () => {
+            const { data: { session } } = await supaClient.auth.getSession();
+            if (!session) { window.location.replace("index.html"); return; }
+
+            const { data: profile, error } = await supaClient.from('profiles').select('role, full_name').eq('id', session.user.id).single();
+
+            if (error || !profile || profile.role !== 'admin') {
+                alert("Akses Ilegal Terdeteksi!"); window.location.replace("index.html"); return;
+            }
+
+            document.getElementById('securityScreen').style.display = 'none';
+            document.getElementById('adminBody').style.display = 'flex';
+            
+            let adminName = profile.full_name || session.user.email.split('@')[0];
+            document.getElementById('adminNameDisplay').textContent = adminName;
+            document.getElementById('adminAvatarInit').textContent = adminName.charAt(0).toUpperCase();
+
+            await loadProfilesDict(); 
+            fetchAllData();
+            
+            supaClient.rpc('update_user_presence').catch(()=>console.log("Presence RPC not found, skipping."));
+        };
+
+        async function loadProfilesDict() {
+            try {
+                const { data: profiles } = await supaClient.from('profiles').select('id, full_name');
+                if (profiles) {
+                    profiles.forEach(p => { globalProfileDict[p.id] = p.full_name || 'Member Area'; });
+                }
+            } catch (err) { console.error("Gagal memuat profil dict:", err); }
+        }
+
+        /* === UI TABS & SIDEBAR === */
+        function switchTab(tabId, element) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.menu li').forEach(li => li.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            element.classList.add('active');
+            
+            // Update Title Bar
+            let rawText = element.textContent.replace(/[^\w\s]/gi, '').trim();
+            document.getElementById('topbarTitle').textContent = rawText;
+            
+            if(window.innerWidth <= 768) { toggleSidebar(); }
+            
+            // Refresh Data Based on Tab
+            if(tabId === 'tab-users') fetchUsers();
+            if(tabId === 'tab-trx') fetchTransactions();
+            if(tabId === 'tab-redemptions') fetchRedemptions();
+            if(tabId === 'tab-dashboard') fetchAllData();
+        }
+
+        function toggleSidebar() { 
+            document.getElementById('sidebar').classList.toggle('open'); 
+            const overlay = document.getElementById('sidebarOverlay');
+            if(overlay.classList.contains('show')) {
+                overlay.style.opacity = '0';
+                setTimeout(()=>overlay.classList.remove('show'), 300);
+            } else {
+                overlay.classList.add('show');
+                setTimeout(()=>overlay.style.opacity = '1', 10);
+            }
+        }
+        
+        async function logoutAdmin() { 
+            showToast("Keluar dari panel admin...", "info");
+            await supaClient.auth.signOut(); 
+            window.location.replace("index.html"); 
+        }
+
+        // ==========================================
+        // FETCH ALL DATA (MASTER HUB)
+        // ==========================================
+        async function fetchAllData() {
+            showToast("Menyelaraskan data sistem...", "info");
+            await fetchTransactions();
+            await fetchRedemptions();
+            await fetchUsers();
+            renderAllActivityTable(); 
+        }
+
+        let cacheTransactions = [];
+        let cacheRedemptions = [];
+
+        // ==========================================
+        // FETCH 1: TRANSACTIONS (SETOR SAMPAH) - UPDATED
+        // ==========================================
+        async function fetchTransactions() {
+            try {
+                // Fetch seluruh kolom, termasuk photo_url, address, lat, lng
+                const { data: trxs, error } = await supaClient.from('transactions').select('*').order('created_at', { ascending: false });
+                if (error) throw error;
+                
+                cacheTransactions = trxs || [];
+                const pendingBody = document.getElementById('pendingTrxTableBody');
+                pendingBody.innerHTML = '';
+                
+                let pendingCount = 0; let successCount = 0;
+
+                cacheTransactions.forEach(trx => {
+                    const date = new Date(trx.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' });
+                    const userName = globalProfileDict[trx.user_id] || 'ID: ' + trx.user_id.substring(0,6);
+                    
+                    if(trx.status === 'menunggu') {
+                        pendingCount++;
+                        const pricePerKg = trx.points / trx.weight;
+                        
+                        // Buat data JSON aman untuk dikirim ke fungsi onclick
+                        const safeTrxData = encodeURIComponent(JSON.stringify({
+                            id: trx.id,
+                            userId: trx.user_id,
+                            userName: userName,
+                            wasteType: trx.waste_type,
+                            weight: trx.weight,
+                            points: trx.points,
+                            pricePerKg: pricePerKg,
+                            address: trx.address,
+                            lat: trx.location_lat,
+                            lng: trx.location_lng,
+                            photo: trx.photo_url
+                        }));
+
+                        let addressPreview = trx.address ? trx.address.substring(0, 20) + '...' : 'Tidak ada alamat';
+
+                        pendingBody.innerHTML += `
+                            <tr>
+                                <td style="color:var(--text-muted);">${date}</td>
+                                <td style="font-weight:700;">${userName}</td>
+                                <td>${trx.waste_type}</td>
+                                <td style="font-size: 0.85rem; color:var(--text-muted);">
+                                    ${addressPreview} <br>
+                                    <span style="color: var(--accent); font-weight: bold;">Est: ${trx.weight} Kg</span>
+                                </td>
+                                <td style="color: var(--accent-dark); font-weight: 800;">+ ${trx.points.toLocaleString('id-ID')} Pts</td>
+                                <td>
+                                    <button class="btn-action btn-verify" onclick="openVerifyModal('${safeTrxData}')">Tinjau Detail</button>
+                                </td>
+                            </tr>
+                        `;
+                    } else if (trx.status === 'diterima' || trx.status === 'berhasil') {
+                        successCount++;
+                    }
+                });
+
+                if(pendingCount === 0) pendingBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 3rem; color: var(--text-muted);">Hore! Antrean setoran kosong.</td></tr>`;
+                
+                document.getElementById('statPendingTrx').textContent = pendingCount;
+                document.getElementById('statSuccessTrx').textContent = successCount; 
+
+            } catch (err) {
+                console.error(err); showToast("Gagal memuat data setoran.", "error");
+            }
+        }
+
+        // ==========================================
+        // FETCH 2: REDEMPTIONS (PENARIKAN POIN)
+        // ==========================================
+        async function fetchRedemptions() {
+            try {
+                const response = await supaClient.from('redemptions').select('*').order('created_at', { ascending: false });
+                
+                let redemptions = [];
+                if (!response.error) {
+                    redemptions = response.data;
+                }
+                
+                cacheRedemptions = redemptions || [];
+                const redeemBody = document.getElementById('pendingRedeemTableBody');
+                redeemBody.innerHTML = '';
+                
+                let pendingRedeemCount = 0;
+
+                cacheRedemptions.forEach(red => {
+                    const date = new Date(red.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' });
+                    const userName = globalProfileDict[red.user_id] || 'ID: ' + red.user_id.substring(0,6);
+                    
+                    if(red.status === 'menunggu') {
+                        pendingRedeemCount++;
+                        redeemBody.innerHTML += `
+                            <tr>
+                                <td style="color:var(--text-muted);">${date}</td>
+                                <td style="font-weight:700;">${userName}</td>
+                                <td style="color: var(--info); font-weight: 800;">Rp ${red.amount.toLocaleString('id-ID')}</td>
+                                <td style="font-weight:600;">${red.destination}</td>
+                                <td>
+                                    <button class="btn-action" style="background: var(--info); color: white;" onclick="openRedeemModal('${red.id}', '${userName}', ${red.amount}, '${red.destination}', '${red.user_id}')">Proses Transfer</button>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                });
+
+                if(pendingRedeemCount === 0) redeemBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 3rem; color: var(--text-muted);">Tidak ada pengajuan penarikan.</td></tr>`;
+                
+                document.getElementById('statPendingRedeem').textContent = pendingRedeemCount;
+
+            } catch (err) {
+                console.error("Terjadi error di fetchRedemptions:", err); 
+            }
+        }
+
+        // ==========================================
+        // RENDER GABUNGAN (TAB DASHBOARD)
+        // ==========================================
+        function renderAllActivityTable() {
+            const allBody = document.getElementById('allActivityTableBody');
+            allBody.innerHTML = '';
+
+            const combinedHistory = [
+                ...cacheTransactions.map(t => ({ ...t, activityType: 'Setor', dateObj: new Date(t.created_at) })),
+                ...cacheRedemptions.map(r => ({ ...r, activityType: 'Tarik', dateObj: new Date(r.created_at) }))
+            ].sort((a, b) => b.dateObj - a.dateObj);
+
+            if(combinedHistory.length === 0) {
+                allBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 3rem; color: var(--text-muted);">Belum ada riwayat aktivitas.</td></tr>`;
+                return;
+            }
+
+            const totalSuccess = combinedHistory.filter(item => item.status === 'diterima' || item.status === 'berhasil').length;
+            document.getElementById('statSuccessTrx').textContent = totalSuccess;
+
+            combinedHistory.forEach(item => {
+                const date = item.dateObj.toLocaleString('id-ID', { day: 'numeric', month: 'short', year:'numeric', hour: '2-digit', minute:'2-digit' });
+                const userName = globalProfileDict[item.user_id] || 'Unknown';
+                
+                let badgeActivity = item.activityType === 'Setor' ? `<span class="badge" style="background: #e0f2fe; color: #0284c7;">📥 Setor Sampah</span>` : `<span class="badge" style="background: #fce7f3; color: #be185d;">💸 Tarik Saldo</span>`;
+                
+                let statusBadge = `<span class="badge badge-pending">⏳ Menunggu</span>`;
+                if(item.status === 'diterima' || item.status === 'berhasil') statusBadge = `<span class="badge badge-success">✅ Berhasil</span>`;
+                if(item.status === 'ditolak') statusBadge = `<span class="badge badge-reject">❌ Ditolak</span>`;
+
+                let detailText = item.activityType === 'Setor' ? `${item.weight} Kg ${item.waste_type}` : `Transfer ke: ${item.destination}`;
+                let pointText = item.activityType === 'Setor' ? `<span style="color: var(--accent-dark);">+${item.points.toLocaleString('id-ID')} Pts</span>` : `<span style="color: var(--warning);">-${item.amount.toLocaleString('id-ID')} Pts</span>`;
+
+                allBody.innerHTML += `
+                    <tr>
+                        <td style="color:var(--text-muted); font-size:0.85rem;">${date}</td>
+                        <td>${badgeActivity}</td>
+                        <td style="font-weight:700;">${userName}</td>
+                        <td style="color:var(--text-muted);">${detailText}</td>
+                        <td style="font-weight: 800;">${pointText}</td>
+                        <td>${statusBadge}</td>
+                    </tr>
+                `;
+            });
+        }
+
+
+        // ==========================================
+        // LOGIKA MODAL SETORAN SAMPAH - UPDATE DENGAN DATA LOKASI
+        // ==========================================
+        function openVerifyModal(encodedData) {
+            const data = JSON.parse(decodeURIComponent(encodedData));
+
+            document.getElementById('modalTrxId').value = data.id;
+            document.getElementById('modalUserId').value = data.userId;
+            document.getElementById('modalPricePerKg').value = data.pricePerKg;
+            
+            document.getElementById('modalUserName').textContent = data.userName;
+            document.getElementById('modalWasteType').textContent = data.wasteType;
+            
+            // Set Address & Map Link
+            if (data.address) {
+                document.getElementById('modalAddress').textContent = data.address;
+                if (data.lat && data.lng) {
+                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${data.lat},${data.lng}`;
+                    document.getElementById('modalMapBtnContainer').innerHTML = `
+                        <a href="${mapsUrl}" target="_blank" class="btn-map">🧭 Buka di Google Maps</a>
+                    `;
+                } else {
+                    document.getElementById('modalMapBtnContainer').innerHTML = '';
+                }
+            } else {
+                document.getElementById('modalAddress').textContent = "Tidak ada data alamat (Setoran Lama).";
+                document.getElementById('modalMapBtnContainer').innerHTML = '';
+            }
+
+            // Set Photo Preview
+            const photoContainer = document.getElementById('modalPhotoContainer');
+            if (data.photo) {
+                photoContainer.innerHTML = `<img src="${data.photo}" alt="Bukti Sampah" onclick="window.open('${data.photo}', '_blank')">`;
+            } else {
+                photoContainer.innerHTML = `<span class="photo-placeholder">Tidak ada foto terlampir (Setoran Lama)</span>`;
+            }
+
+            // Set Weights
+            document.getElementById('modalActualWeight').value = data.weight;
+            document.getElementById('modalActualPoints').value = data.points;
+            
+            const modal = document.getElementById('verifyModal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+
+        function recalculatePoints() {
+            const actualWeight = parseFloat(document.getElementById('modalActualWeight').value) || 0;
+            const price = parseFloat(document.getElementById('modalPricePerKg').value) || 0;
+            const newPoints = Math.floor(actualWeight * price);
+            document.getElementById('modalActualPoints').value = newPoints;
+        }
+
+        async function processTransaction(statusAction) {
+            const trxId = document.getElementById('modalTrxId').value;
+            const userId = document.getElementById('modalUserId').value;
+            const actualWeight = parseFloat(document.getElementById('modalActualWeight').value);
+            const actualPoints = parseInt(document.getElementById('modalActualPoints').value);
+
+            if(!actualWeight || actualWeight <= 0) {
+                showToast("Berat aktual harus lebih dari 0", "warning"); return;
+            }
+
+            showToast("Menyimpan setoran...", "info");
+
+            try {
+                // Update tabel transaksi
+                const { error: updateError } = await supaClient
+                    .from('transactions')
+                    .update({ status: statusAction, weight: actualWeight, points: actualPoints })
+                    .eq('id', trxId);
+
+                if (updateError) throw updateError;
+
+                showToast(`Setoran berhasil ${statusAction}!`, "success");
+                closeModal('verifyModal');
+                fetchAllData(); 
+
+            } catch (err) {
+                console.error(err); showToast("Gagal memproses setoran.", "error");
+            }
+        }
+
+        // ==========================================
+        // LOGIKA MODAL PENARIKAN POIN
+        // ==========================================
+        function openRedeemModal(id, userName, amount, destination, userId) {
+            document.getElementById('modalRedeemId').value = id;
+            document.getElementById('modalRedeemUserId').value = userId;
+            document.getElementById('modalRedeemAmountVal').value = amount;
+            
+            document.getElementById('modalRedeemUserName').textContent = userName;
+            document.getElementById('modalRedeemDest').textContent = destination;
+            document.getElementById('modalRedeemAmountDisplay').textContent = "Rp " + amount.toLocaleString('id-ID');
+            
+            const modal = document.getElementById('redeemModal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+
+        async function processRedemption(statusAction) {
+            const redeemId = document.getElementById('modalRedeemId').value;
+            const userId = document.getElementById('modalRedeemUserId').value;
+            const amount = parseInt(document.getElementById('modalRedeemAmountVal').value);
+
+            showToast("Memproses data penarikan...", "info");
+
+            try {
+                // Update status di tabel redemptions
+                const { error: updateError } = await supaClient
+                    .from('redemptions')
+                    .update({ status: statusAction })
+                    .eq('id', redeemId);
+
+                if (updateError) throw updateError;
+
+                showToast(`Penarikan poin berhasil di-${statusAction}!`, "success");
+                closeModal('redeemModal');
+                fetchAllData();
+
+            } catch (err) {
+                console.error(err); showToast("Terjadi kesalahan sistem.", "error");
+            }
+        }
+
+        // Helper Close Modals
+        function closeModal(modalId) { 
+            const modal = document.getElementById(modalId);
+            modal.classList.remove('show');
+            setTimeout(() => modal.style.display = 'none', 300);
+        }
+
+        // ==========================================
+        // FETCH USERS & LIVE TRACKING
+        // ==========================================
+        async function fetchUsers(isManualRefresh = false) {
+            if(isManualRefresh) showToast("Merefresh data pengguna...", "info");
+            try {
+                const { data: users, error } = await supaClient.from('profiles').select('*').order('last_seen', { ascending: false });
+                if (error) throw error;
+
+                const tableBody = document.getElementById('usersTableBody');
+                tableBody.innerHTML = '';
+                let onlineCount = 0; const now = new Date();
+
+                users.forEach(user => {
+                    let statusHtml = ''; let timeAgoText = 'Belum login';
+                    if (user.last_seen) {
+                        const diffInMins = Math.floor((now - new Date(user.last_seen)) / 60000);
+                        if (diffInMins <= 5) {
+                            onlineCount++; statusHtml = `<span class="badge badge-online">🟢 Online</span>`; timeAgoText = 'Sedang aktif';
+                        } else {
+                            statusHtml = `<span class="badge badge-offline">⚪ Offline</span>`;
+                            if(diffInMins < 60) timeAgoText = `${diffInMins} mnt lalu`;
+                            else if (diffInMins < 1440) timeAgoText = `${Math.floor(diffInMins/60)} jam lalu`;
+                            else timeAgoText = `${Math.floor(diffInMins/1440)} hari lalu`;
+                        }
+                    } else statusHtml = `<span class="badge badge-offline">⚪ Offline</span>`;
+
+                    let nameDisplay = user.full_name || 'Tanpa Nama';
+                    if (user.role === 'admin') nameDisplay += ' 👑';
+
+                    globalProfileDict[user.id] = user.full_name;
+
+                    tableBody.innerHTML += `<tr>
+                        <td style="font-weight: 700;">${nameDisplay}</td>
+                        <td style="color:var(--text-muted); font-size: 0.85rem;">ID: ${user.id.substring(0,8)}...</td>
+                        <td style="font-weight: 600;">${user.whatsapp_number || user.wa || '-'}</td>
+                        <td>${statusHtml}</td>
+                        <td style="font-size: 0.85rem; color: var(--text-muted);">${timeAgoText}</td>
+                    </tr>`;
+                });
+                
+                document.getElementById('statOnlineUsers').textContent = onlineCount;
+                if(isManualRefresh) showToast("Data pengguna berhasil diperbarui.", "success");
+            } catch (err) { 
+                console.error(err); 
+            }
+        }
+
+        setInterval(fetchUsers, 60000); 
+    </script>
+</body>
+</html>
