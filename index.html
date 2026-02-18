@@ -28,12 +28,20 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
         
+        /* FIX SCROLL HORIZONTAL MOBILE */
+        html, body {
+            overflow-x: hidden !important;
+            max-width: 100vw;
+            width: 100%;
+        }
+
         body {
             background: linear-gradient(135deg, #020617, #0f172a, #1e293b, #064e3b);
             background-size: 400% 400%;
             animation: gradientBG 15s ease infinite;
             color: var(--text-main);
-            overflow-x: hidden; scroll-behavior: smooth;
+            scroll-behavior: smooth;
+            position: relative;
         }
 
         @keyframes gradientBG {
@@ -89,7 +97,8 @@
         .stat-item h3 { font-size: 2.5rem; font-weight: 800; color: white; line-height: 1;}
         .stat-item p { font-size: 0.95rem; color: var(--accent); font-weight: 600; margin-top: 0.5rem;}
 
-        .orb { position: absolute; border-radius: 50%; filter: blur(80px); z-index: 0; pointer-events: none; }
+        /* Orbs Fixed (Preventing Overflow) */
+        .orb { position: absolute; border-radius: 50%; filter: blur(80px); z-index: 0; pointer-events: none; max-width: 100vw; overflow: hidden; }
         .orb-1 { top: 0%; left: -10%; width: 500px; height: 500px; background: rgba(16, 185, 129, 0.2); animation: float 10s ease-in-out infinite; }
         .orb-2 { bottom: 20%; right: -10%; width: 600px; height: 600px; background: rgba(56, 189, 248, 0.15); animation: float 12s ease-in-out infinite reverse; }
 
@@ -174,7 +183,7 @@
         #imagePreview { max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px; display: none; border: 1px solid rgba(255,255,255,0.1);}
 
         /* Map Styling */
-        #map { height: 250px; width: 100%; border-radius: 12px; margin-bottom: 0.5rem; z-index: 1; border: 1px solid rgba(255,255,255,0.1); background: #e5e5e5;}
+        #map { height: 250px; width: 100%; border-radius: 12px; margin-bottom: 0.5rem; z-index: 1; border: 1px solid rgba(255,255,255,0.1); background: #e5e5e5; overflow: hidden;}
         .map-helper { font-size: 0.8rem; color: var(--warning); margin-bottom: 1rem; display: flex; align-items: center; gap: 5px;}
         
         /* Map Controls Fix for Dark Theme */
@@ -983,16 +992,18 @@
             const amount = parseInt(document.getElementById('redeemAmount').value);
             const destination = document.getElementById('redeemDestination').value;
 
+            // Pastikan tidak tembus poin negatif, validasi pakai currentUserProfile yang sudah dihitung akurat
             if (!currentUserProfile || currentUserProfile.points < amount) {
-                showToast("Poin Anda tidak mencukupi.", "error");
+                showToast("Poin Anda tidak mencukupi untuk penukaran ini.", "error");
                 return;
             }
 
-            showToast("Memproses pengajuan...", "info");
+            showToast("Memproses pengajuan penukaran...", "info");
 
             try {
                 const { data: { session } } = await supaClient.auth.getSession();
                 
+                // 1. Insert riwayat penarikan poin ke tabel redemptions
                 const { error: insertError } = await supaClient
                     .from('redemptions')
                     .insert([
@@ -1006,13 +1017,14 @@
 
                 if (insertError) throw insertError;
 
-                showToast("Pengajuan berhasil! Tunggu konfirmasi.", "success");
+                showToast("Pengajuan berhasil! Silakan tunggu konfirmasi admin.", "success");
                 closeRedeemModal();
                 
+                // 2. Refresh History untuk menghitung ulang saldo seketika
                 loadUserTransactions(session.user.id);
             } catch (err) {
                 console.error(err);
-                showToast("Gagal memproses: " + err.message, "error");
+                showToast("Gagal memproses penukaran: " + err.message, "error");
             }
         }
 
@@ -1021,6 +1033,7 @@
             try {
                 if(!supaClient) return;
 
+                // Ambil semua transaksi dan redemptions
                 const trxPromise = supaClient.from('transactions').select('*').eq('user_id', userId);
                 const redPromise = supaClient.from('redemptions').select('*').eq('user_id', userId);
 
@@ -1033,12 +1046,14 @@
                 let calculatedPoints = 0;
                 
                 transactions.forEach(t => {
+                    // Hanya tambahkan jika sukses/diterima
                     if (t.status === 'diterima' || t.status === 'berhasil') {
                         calculatedPoints += t.points;
                     }
                 });
 
                 redemptions.forEach(r => {
+                    // Kurangi selama status TIDAK ditolak (artinya masih menunggu/berhasil tetap memotong saldo visual)
                     if (r.status !== 'ditolak') {
                         calculatedPoints -= r.amount;
                     }
@@ -1049,11 +1064,14 @@
                 // Update Saldo Visual User
                 if (currentUserProfile) currentUserProfile.points = calculatedPoints;
                 
+                // Jika bukan admin, render angkanya (jika admin tetap dibiarkan NULL oleh fungsi loadDashboardView)
                 if (currentUserProfile?.role !== 'admin') {
                     document.getElementById('userPoints').innerHTML = `${calculatedPoints.toLocaleString('id-ID')} <span style="font-size: 1.2rem; color: var(--accent);">Pts</span>`;
                 }
 
+                // Coba update ke profil (Auto-Heal) secara diam-diam untuk keseragaman database
                 supaClient.from('profiles').update({ points: calculatedPoints }).eq('id', userId).then(()=>{});
+
 
                 // 2. RENDER HISTORY
                 const combinedHistory = [
@@ -1104,7 +1122,7 @@
                     } else {
                         let waButtonHtml = '';
                         if (item.status === 'diterima' || item.status === 'berhasil') {
-                            const waPesan = encodeURIComponent(`Halo Admin EcoBank, saya mengkonfirmasi pencairan Rp ${item.amount.toLocaleString('id-ID')} ke ${item.destination} telah sukses. Terima kasih!`);
+                            const waPesan = encodeURIComponent(`Halo Admin EcoBank, saya mengkonfirmasi bahwa pencairan poin sebesar Rp ${item.amount.toLocaleString('id-ID')} ke tujuan ${item.destination} telah berhasil dikonfirmasi. Terima kasih!`);
                             waButtonHtml = `
                                 <a href="https://wa.me/6281234567890?text=${waPesan}" target="_blank" class="btn btn-outline" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; border-color: var(--accent); color: var(--accent); margin-top: 5px; text-decoration: none;">Konfirmasi WA</a>
                             `;
@@ -1114,7 +1132,7 @@
                             <div>
                                 <h4 style="font-weight: 700; margin-bottom: 0.2rem; color: var(--warning);">Tarik Saldo Poin</h4>
                                 <p style="font-size: 0.8rem; color: var(--text-muted);">
-                                    ${date} • ${item.destination}
+                                    ${date} • Tujuan: ${item.destination}
                                 </p>
                             </div>
                             <div style="text-align: right;">
