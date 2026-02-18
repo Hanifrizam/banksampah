@@ -388,7 +388,9 @@
         const SUPABASE_ANON_KEY = 'sb_publishable_JA9cuYEGjfGSyVQgwktrkA_-4RQLFgN';
         const supaClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        let globalProfileDict = {}; // Cache untuk menyimpan mapping ID User -> Nama
+        let globalProfileDict = {}; 
+        let cacheTransactions = [];
+        let cacheRedemptions = [];
 
         // ==========================================
         // TOAST NOTIFICATION SYSTEM
@@ -439,7 +441,10 @@
             await loadProfilesDict(); 
             fetchAllData();
             
-            supaClient.rpc('update_user_presence').catch(()=>console.log("Presence RPC not found, skipping."));
+            // Supress presence rpc error securely
+            try {
+                await supaClient.rpc('update_user_presence');
+            } catch(e) {} // ignore error if function not exists
         };
 
         async function loadProfilesDict() {
@@ -458,13 +463,11 @@
             document.getElementById(tabId).classList.add('active');
             element.classList.add('active');
             
-            // Update Title Bar
             let rawText = element.textContent.replace(/[^\w\s]/gi, '').trim();
             document.getElementById('topbarTitle').textContent = rawText;
             
             if(window.innerWidth <= 768) { toggleSidebar(); }
             
-            // Refresh Data Based on Tab
             if(tabId === 'tab-users') fetchUsers();
             if(tabId === 'tab-trx') fetchTransactions();
             if(tabId === 'tab-redemptions') fetchRedemptions();
@@ -500,15 +503,11 @@
             renderAllActivityTable(); 
         }
 
-        let cacheTransactions = [];
-        let cacheRedemptions = [];
-
         // ==========================================
-        // FETCH 1: TRANSACTIONS (SETOR SAMPAH) - UPDATED
+        // FETCH 1: TRANSACTIONS (SETOR SAMPAH)
         // ==========================================
         async function fetchTransactions() {
             try {
-                // Fetch seluruh kolom, termasuk photo_url, address, lat, lng
                 const { data: trxs, error } = await supaClient.from('transactions').select('*').order('created_at', { ascending: false });
                 if (error) throw error;
                 
@@ -518,29 +517,13 @@
                 
                 let pendingCount = 0; let successCount = 0;
 
-                cacheTransactions.forEach(trx => {
+                cacheTransactions.forEach((trx, index) => {
                     const date = new Date(trx.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' });
                     const userName = globalProfileDict[trx.user_id] || 'ID: ' + trx.user_id.substring(0,6);
                     
                     if(trx.status === 'menunggu') {
                         pendingCount++;
-                        const pricePerKg = trx.points / trx.weight;
                         
-                        // Buat data JSON aman untuk dikirim ke fungsi onclick
-                        const safeTrxData = encodeURIComponent(JSON.stringify({
-                            id: trx.id,
-                            userId: trx.user_id,
-                            userName: userName,
-                            wasteType: trx.waste_type,
-                            weight: trx.weight,
-                            points: trx.points,
-                            pricePerKg: pricePerKg,
-                            address: trx.address,
-                            lat: trx.location_lat,
-                            lng: trx.location_lng,
-                            photo: trx.photo_url
-                        }));
-
                         let addressPreview = trx.address ? trx.address.substring(0, 20) + '...' : 'Tidak ada alamat';
 
                         pendingBody.innerHTML += `
@@ -554,7 +537,7 @@
                                 </td>
                                 <td style="color: var(--accent-dark); font-weight: 800;">+ ${trx.points.toLocaleString('id-ID')} Pts</td>
                                 <td>
-                                    <button class="btn-action btn-verify" onclick="openVerifyModal('${safeTrxData}')">Tinjau Detail</button>
+                                    <button class="btn-action btn-verify" onclick="openVerifyModal(${index})">Tinjau Detail</button>
                                 </td>
                             </tr>
                         `;
@@ -668,23 +651,27 @@
 
 
         // ==========================================
-        // LOGIKA MODAL SETORAN SAMPAH - UPDATE DENGAN DATA LOKASI
+        // LOGIKA MODAL SETORAN SAMPAH
         // ==========================================
-        function openVerifyModal(encodedData) {
-            const data = JSON.parse(decodeURIComponent(encodedData));
+        function openVerifyModal(index) {
+            const data = cacheTransactions[index];
+            if(!data) return;
+
+            const userName = globalProfileDict[data.user_id] || 'ID: ' + data.user_id.substring(0,6);
+            const pricePerKg = data.points / data.weight;
 
             document.getElementById('modalTrxId').value = data.id;
-            document.getElementById('modalUserId').value = data.userId;
-            document.getElementById('modalPricePerKg').value = data.pricePerKg;
+            document.getElementById('modalUserId').value = data.user_id;
+            document.getElementById('modalPricePerKg').value = pricePerKg;
             
-            document.getElementById('modalUserName').textContent = data.userName;
-            document.getElementById('modalWasteType').textContent = data.wasteType;
+            document.getElementById('modalUserName').textContent = userName;
+            document.getElementById('modalWasteType').textContent = data.waste_type;
             
             // Set Address & Map Link
             if (data.address) {
                 document.getElementById('modalAddress').textContent = data.address;
-                if (data.lat && data.lng) {
-                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${data.lat},${data.lng}`;
+                if (data.location_lat && data.location_lng) {
+                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${data.location_lat},${data.location_lng}`;
                     document.getElementById('modalMapBtnContainer').innerHTML = `
                         <a href="${mapsUrl}" target="_blank" class="btn-map">🧭 Buka di Google Maps</a>
                     `;
@@ -698,8 +685,8 @@
 
             // Set Photo Preview
             const photoContainer = document.getElementById('modalPhotoContainer');
-            if (data.photo) {
-                photoContainer.innerHTML = `<img src="${data.photo}" alt="Bukti Sampah" onclick="window.open('${data.photo}', '_blank')">`;
+            if (data.photo_url) {
+                photoContainer.innerHTML = `<img src="${data.photo_url}" alt="Bukti Sampah" onclick="window.open('${data.photo_url}', '_blank')">`;
             } else {
                 photoContainer.innerHTML = `<span class="photo-placeholder">Tidak ada foto terlampir (Setoran Lama)</span>`;
             }
