@@ -3,134 +3,1271 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bank Sampah Digital - Ubah Sampah Jadi Rupiah</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <title>EcoBank - Bank Sampah Digital Modern</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        /* === BASE & VARIABLES === */
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            --text-main: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.7);
+            --accent: #10B981; 
+            --accent-hover: #059669;
+            --dark-bg: #0f172a;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        body {
+            background: linear-gradient(135deg, #020617, #0f172a, #1e293b, #064e3b);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: var(--text-main);
+            overflow-x: hidden; scroll-behavior: smooth;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .glass { background: var(--glass-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--glass-border); border-radius: 24px; box-shadow: var(--glass-shadow); }
+
+        /* === NAVBAR === */
+        nav { display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 5%; position: fixed; width: 100%; top: 0; z-index: 1000; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        nav.scrolled { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.05); padding: 0.8rem 5%; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .logo { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; z-index: 1001; display: flex; align-items: center; gap: 8px; cursor: pointer;}
+        .logo span { color: var(--accent); }
+        .logo-icon { background: var(--accent); color: white; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center; border-radius: 10px; font-size: 1.2rem;}
+        
+        .nav-content { display: flex; align-items: center; gap: 2.5rem; }
+        .nav-links { display: flex; gap: 2rem; }
+        .nav-links a { text-decoration: none; color: var(--text-muted); font-weight: 500; font-size: 0.95rem; transition: 0.3s; position: relative; }
+        .nav-links a:hover { color: white; }
+        .nav-links a::after { content: ''; position: absolute; width: 0; height: 2px; bottom: -5px; left: 0; background-color: var(--accent); transition: width 0.3s; }
+        .nav-links a:hover::after { width: 100%; }
+        
+        /* Buttons */
+        .btn-group { display: flex; gap: 12px; align-items: center; }
+        .hero-btn-group { display: flex; gap: 12px; justify-content: flex-start; margin-top: 1rem; } 
+        .btn { background: var(--accent); color: white; padding: 0.7rem 1.8rem; border-radius: 50px; font-weight: 600; font-size: 0.95rem; border: 2px solid var(--accent); cursor: pointer; transition: all 0.3s ease; text-decoration: none; display: inline-flex; justify-content: center; align-items: center; gap: 8px;}
+        .btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); transform: translateY(-3px); box-shadow: 0 10px 20px -10px rgba(16, 185, 129, 0.6); }
+        .btn-outline { background: rgba(255,255,255,0.05); color: white; border: 2px solid rgba(255,255,255,0.2); backdrop-filter: blur(5px);}
+        .btn-outline:hover { background: rgba(255,255,255,0.15); border-color: white; box-shadow: 0 10px 20px -10px rgba(255, 255, 255, 0.2); }
+
+        .hamburger { display: none; cursor: pointer; flex-direction: column; gap: 5px; z-index: 1001; }
+        .hamburger span { width: 25px; height: 2px; background-color: var(--text-main); border-radius: 5px; transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+        .hamburger.active span:nth-child(1) { transform: translateY(7px) rotate(45deg); background-color: var(--accent); }
+        .hamburger.active span:nth-child(2) { opacity: 0; transform: translateX(-20px); }
+        .hamburger.active span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); background-color: var(--accent); }
+
+        /* === SECTIONS === */
+        section { padding: 8rem 5% 5rem; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 2;}
+        .section-title { text-align: center; font-size: 2.8rem; margin-bottom: 1rem; font-weight: 800; letter-spacing: -1px;}
+        .section-subtitle { text-align: center; color: var(--text-muted); font-size: 1.1rem; margin-bottom: 4rem; max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.6;}
+        .section-title span { color: var(--accent); }
+
+        .hero { flex-direction: row; align-items: center; justify-content: space-between; gap: 3rem; padding-top: 120px; }
+        .hero-text { flex: 1; animation: fadeInUp 1s ease-out forwards; opacity: 0; max-width: 600px; }
+        .hero-badge { display: inline-block; padding: 0.5rem 1rem; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--accent); border-radius: 50px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1.5rem; }
+        .hero-text h1 { font-size: 4.5rem; line-height: 1.1; margin-bottom: 1.5rem; font-weight: 800; letter-spacing: -1.5px;}
+        .hero-text p { font-size: 1.15rem; color: var(--text-muted); margin-bottom: 2.5rem; line-height: 1.6;}
+        .hero-img { flex: 1; display: flex; justify-content: flex-end; animation: fadeInUp 1.2s ease-out forwards; opacity: 0; }
+        
+        .hero-stats { display: flex; gap: 3rem; margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); }
+        .stat-item h3 { font-size: 2.5rem; font-weight: 800; color: white; line-height: 1;}
+        .stat-item p { font-size: 0.95rem; color: var(--accent); font-weight: 600; margin-top: 0.5rem;}
+
+        .orb { position: absolute; border-radius: 50%; filter: blur(80px); z-index: 0; pointer-events: none; }
+        .orb-1 { top: 0%; left: -10%; width: 500px; height: 500px; background: rgba(16, 185, 129, 0.2); animation: float 10s ease-in-out infinite; }
+        .orb-2 { bottom: 20%; right: -10%; width: 600px; height: 600px; background: rgba(56, 189, 248, 0.15); animation: float 12s ease-in-out infinite reverse; }
+
+        @keyframes float { 0% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0, 0) scale(1); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Category Grid */
+        .category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; }
+        .cat-card { display: flex; align-items: center; gap: 1rem; padding: 1.5rem; border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; cursor: default;}
+        .cat-card:hover { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); transform: translateY(-5px);}
+        .cat-icon { font-size: 2.2rem; }
+        .cat-info h4 { font-size: 1.1rem; color: white; margin-bottom: 0.2rem;}
+        .cat-info p { font-size: 0.85rem; color: var(--accent); font-weight: 600;}
+
+        /* How it works */
+        .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; counter-reset: step; }
+        .step-card { padding: 3rem 2rem; text-align: center; transition: 0.4s; position: relative; overflow: hidden; }
+        .step-card:hover { transform: translateY(-10px); background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2);}
+        .impact-icon-wrapper { width: 70px; height: 70px; border-radius: 20px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05)); display: flex; justify-content: center; align-items: center; font-size: 2rem; margin-bottom: 1.5rem; border: 1px solid rgba(16, 185, 129, 0.3);}
+        .step-card::before { counter-increment: step; content: "0" counter(step); position: absolute; top: -10px; right: 10px; font-size: 8rem; font-weight: 900; color: rgba(255,255,255,0.03); z-index: 0; line-height: 1; font-family: 'Plus Jakarta Sans', sans-serif;}
+        .step-card h3 { font-size: 1.4rem; margin-bottom: 1rem; position: relative; z-index: 1;}
+        .step-card p { color: var(--text-muted); font-size: 0.95rem; line-height: 1.7; position: relative; z-index: 1;}
+
+        .impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; }
+
+        /* FAQ */
+        .faq-container { max-width: 800px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 1rem;}
+        .faq-item { border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); transition: 0.3s;}
+        .faq-question { width: 100%; text-align: left; padding: 1.5rem 2rem; background: transparent; border: none; color: white; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.3s; }
+        .faq-question:hover { background: rgba(255,255,255,0.05); }
+        .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; background: rgba(0,0,0,0.2); padding: 0 2rem; color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;}
+        .faq-item.active { border-color: var(--accent); box-shadow: 0 10px 20px -10px rgba(16, 185, 129, 0.2);}
+        .faq-item.active .faq-answer { padding: 0 2rem 1.5rem; max-height: 300px; }
+        
+        footer { padding: 4rem 5% 2rem; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 5rem;}
+        .footer-content { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 3rem; margin-bottom: 3rem; }
+        .footer-col h4 { margin-bottom: 1.5rem; color: white; font-weight: 700;}
+        .footer-col p, .footer-col a { color: var(--text-muted); text-decoration: none; display: block; margin-bottom: 0.8rem; transition: 0.3s; font-size: 0.95rem;}
+        .footer-col a:hover { color: var(--accent); padding-left: 8px; }
+        .footer-bottom { text-align: center; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.05); color: var(--text-muted); font-size: 0.85rem; }
+
+        /* === ANIMATED TOAST NOTIFICATION === */
+        #toastBox {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
+            background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px);
+            padding: 1rem 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent);
+            color: white; font-size: 0.95rem; font-weight: 500;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 9999;
+            display: flex; align-items: center; gap: 10px; min-width: 300px;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s ease;
+            opacity: 0; pointer-events: none;
+        }
+        #toastBox.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        #toastBox.error { border-left-color: var(--danger); }
+        #toastBox.success { border-left-color: var(--accent); }
+        .toast-icon { font-size: 1.2rem; }
+
+        /* === MODAL FORM === */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(2, 6, 23, 0.8); backdrop-filter: blur(8px); z-index: 2000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s; }
+        .modal.show { opacity: 1; }
+        .modal-content { padding: 2.5rem; width: 90%; max-width: 420px; text-align: center; transform: translateY(-20px) scale(0.95); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); max-height: 90vh; overflow-y: auto; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);}
+        .modal.show .modal-content { transform: translateY(0) scale(1); }
+        .modal-content::-webkit-scrollbar { width: 4px; }
+        .modal-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        
+        .modal-content h2 { margin-bottom: 0.5rem; font-size: 1.8rem; font-weight: 800;}
+        .modal-content p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; }
+        
+        /* Modifikasi untuk menampung elemen Select & Textarea di dalam Modal & Form Dashboard */
+        .input-group { margin-bottom: 1.2rem; text-align: left; }
+        .input-group label { display: block; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-muted); font-weight: 500;}
+        .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 0.9rem 1.2rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: white; outline: none; transition: 0.3s; font-size: 0.95rem; font-family: 'Plus Jakarta Sans', sans-serif;}
+        .input-group textarea { resize: vertical; min-height: 80px; }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: var(--accent); background: rgba(16, 185, 129, 0.05); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);}
+        select option { background: #1e293b; color: white; }
+
+        /* File Upload Styling */
+        .file-upload-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
+        .file-upload-wrapper input[type=file] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; }
+        .file-upload-btn { background: rgba(0,0,0,0.3); border: 1px dashed rgba(255,255,255,0.3); color: var(--text-muted); padding: 1rem; border-radius: 12px; text-align: center; display: block; transition: 0.3s; }
+        .file-upload-wrapper:hover .file-upload-btn { border-color: var(--accent); color: white; background: rgba(16, 185, 129, 0.1);}
+        #imagePreview { max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px; display: none; border: 1px solid rgba(255,255,255,0.1);}
+
+        /* Map Styling */
+        #map { height: 250px; width: 100%; border-radius: 12px; margin-bottom: 0.5rem; z-index: 1; border: 1px solid rgba(255,255,255,0.1); background: #e5e5e5;}
+        .map-helper { font-size: 0.8rem; color: var(--warning); margin-bottom: 1rem; display: flex; align-items: center; gap: 5px;}
+        
+        /* Map Controls Fix for Dark Theme */
+        .leaflet-control-zoom a { background: #1e293b !important; color: white !important; border-color: rgba(255,255,255,0.1) !important;}
+        
+        .close-btn { position: absolute; top: 1.5rem; right: 1.5rem; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); transition: 0.3s; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; border-radius: 50%; background: rgba(255,255,255,0.05);}
+        .close-btn:hover { color: white; background: rgba(239, 68, 68, 0.8); transform: rotate(90deg); }
+        
+        .switch-form { margin-top: 1.5rem; font-size: 0.9rem; color: var(--text-muted); cursor: pointer; display: inline-block;}
+        .switch-form span:last-child { color: var(--accent); font-weight: 700; transition: 0.3s;}
+        .switch-form:hover span:last-child { text-decoration: underline; }
+
+        .divider { display: flex; align-items: center; text-align: center; margin: 1.5rem 0; color: rgba(255,255,255,0.3); font-size: 0.8rem; font-weight: 600;}
+        .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .divider:not(:empty)::before { margin-right: .5em; }
+        .divider:not(:empty)::after { margin-left: .5em; }
+        .btn-google { background: white; color: #1f2937; border: none; font-weight: 600;}
+        .btn-google:hover { background: #f8fafc; transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(255,255,255,0.1);}
+
+        .captcha-box { background: rgba(0,0,0,0.2); padding: 1.2rem; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.2); margin-bottom: 1.5rem; }
+
+        /* === USER DASHBOARD === */
+        #dashboard-view { display: none; } 
+        .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3rem; }
+        .dash-profile { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 1rem 0.5rem 1.5rem; background: rgba(255,255,255,0.05); border-radius: 50px; border: 1px solid rgba(255,255,255,0.1);}
+        .avatar { width: 45px; height: 45px; background: linear-gradient(135deg, var(--accent), #047857); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.2rem; font-weight: 800; text-transform: uppercase; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);}
+        
+        .dash-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 2rem; align-items: start;}
+        .dash-card { padding: 2.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px;}
+        
+        /* History List Modifikasi untuk menampung history konversi */
+        .history-list { margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem; max-height: 500px; overflow-y: auto; padding-right: 5px;}
+        .history-list::-webkit-scrollbar { width: 4px; }
+        .history-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        
+        .history-item { display: flex; justify-content: space-between; align-items: center; padding: 1.2rem; background: rgba(0,0,0,0.2); border-radius: 16px; transition: 0.3s; border: 1px solid rgba(255,255,255,0.05);}
+        .history-item:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1);}
+        .text-green { color: var(--accent); font-weight: 700; font-size: 1.1rem;}
+
+        /* Badge Status Transaksi (TAMPILAN UI STATUS) */
+        .status-badge { padding: 0.3rem 0.6rem; border-radius: 6px; font-weight: 700; font-size: 0.75rem; border: 1px solid transparent; display: inline-block;}
+        .status-menunggu { background: rgba(245, 158, 11, 0.15); color: var(--warning); border-color: rgba(245, 158, 11, 0.3); }
+        .status-diterima { background: rgba(16, 185, 129, 0.15); color: var(--accent); border-color: rgba(16, 185, 129, 0.3); }
+        .status-ditolak { background: rgba(239, 68, 68, 0.15); color: var(--danger); border-color: rgba(239, 68, 68, 0.3); }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: all 0.8s cubic-bezier(0.5, 0, 0, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+
+        /* Desktop Fixes */
+        @media (min-width: 993px) {
+            .hero-text { padding-right: 5%; }
+            .hero-img .glass { width: 420px; height: 500px; }
+        }
+
+        @media (max-width: 992px) {
+            .hero-text h1 { font-size: 3.5rem; }
+            .dash-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Mobile Fixes */
+        @media (max-width: 768px) {
+            .hamburger { display: flex; }
+            
+            .nav-content { position: fixed; top: 0; right: -100%; width: 280px; height: 100vh; background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(20px); flex-direction: column; justify-content: center; align-items: center; transition: right 0.4s ease; z-index: 1000; box-shadow: -20px 0 50px rgba(0,0,0,0.5); border-left: 1px solid rgba(255,255,255,0.05); }
+            .nav-content.active { right: 0; }
+            .nav-links { flex-direction: column; text-align: center; gap: 2.5rem; margin-bottom: 3rem; }
+            .nav-links a { font-size: 1.2rem; }
+            .btn-group { flex-direction: column; gap: 1rem; width: 80%; }
+            .btn-group .btn { width: 100%; justify-content: center;}
+
+            section { padding: 6rem 5% 4rem; }
+            .hero { flex-direction: column; text-align: center; padding-top: 100px; gap: 2rem;}
+            .hero-text { padding-right: 0; max-width: 100%; }
+            .hero-text h1 { font-size: 3rem; }
+            .hero-text p { margin-left: auto; margin-right: auto;}
+            
+            .hero-btn-group { justify-content: center; flex-direction: column; align-items: center; width: 100%; }
+            .hero-btn-group .btn { width: 100%; max-width: 300px; }
+            
+            .hero-stats { justify-content: center; gap: 2rem;}
+            .hero-img { display: none; } 
+            
+            .input-group.mobile-col { flex-direction: column; gap: 1rem; }
+            .dash-header { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
+            .dash-profile { width: 100%; justify-content: space-between; }
+        }
+    </style>
 </head>
 <body>
 
-    <header id="main-header">
-        <nav>
-            <a href="#" class="logo">Bank Sampah</a>
-            <ul class="nav-links">
-                <li><a href="#hero">Beranda</a></li>
-                <li><a href="#layanan">Layanan</a></li>
-                <li><a href="#dampak">Dampak</a></li> <li><a href="#update-data">Update Data</a></li>
-                <li><a href="#kontak">Kontak</a></li>
-            </ul>
-            <button id="menu-toggle" class="menu-toggle">
-                <i class="fas fa-bars"></i>
-            </button>
-        </nav>
-    </header>
+    <div id="toastBox">
+        <span class="toast-icon">ℹ️</span>
+        <span id="toastMsg">Notifikasi</span>
+    </div>
 
-    <main>
-        <section id="hero">
-            <div class="hero-content">
-                <h1 class="animate-on-load">Ubah Sampah Menjadi Berkah</h1>
-                <p class="animate-on-load">Solusi digital untuk pengelolaan sampah yang lebih mudah, menguntungkan, dan ramah lingkungan.</p>
-                <a href="#layanan" class="cta-button animate-on-load">Mulai Menabung Sampah</a>
-            </div>
-        </section>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
 
-        <section id="layanan" class="content-section">
-            <div class="container">
-                <h2 class="section-title animate-on-scroll">Layanan Kami</h2>
-                <div class="layanan-grid">
-                    <div class="card animate-on-scroll">
-                        <i class="fas fa-recycle card-icon"></i>
-                        <h3>Setor Sampah</h3>
-                        <p>Kumpulkan sampah anorganik Anda seperti plastik, kertas, dan logam, lalu setorkan ke titik kami.</p>
-                    </div>
-                    <div class="card animate-on-scroll">
-                        <i class="fas fa-coins card-icon"></i>
-                        <h3>Poin & Hadiah</h3>
-                        <p>Setiap setoran sampah akan dikonversi menjadi poin yang bisa ditukar dengan uang tunai atau hadiah menarik.</p>
-                    </div>
-                    <div class="card animate-on-scroll">
-                        <i class="fas fa-chalkboard-teacher card-icon"></i>
-                        <h3>Edukasi Lingkungan</h3>
-                        <p>Ikuti program edukasi kami untuk belajar lebih banyak tentang pentingnya daur ulang dan gaya hidup minim sampah.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="dampak" class="dampak-section">
-            <div class="container">
-                <h2 class="section-title animate-on-scroll">Dampak Positif Kita Bersama</h2>
-                <p class="section-subtitle animate-on-scroll">Setiap sampah yang Anda setorkan memberikan kontribusi nyata bagi lingkungan dan komunitas.</p>
-                <div class="stats-container">
-                    <div class="stat-item animate-on-scroll">
-                        <i class="fas fa-weight-hanging"></i>
-                        <span class="stat-number" data-target="0">0</span>
-                        <p>Kg Sampah Terkumpul</p>
-                    </div>
-                    <div class="stat-item animate-on-scroll">
-                        <i class="fas fa-users"></i>
-                        <span class="stat-number" data-target="0">0</span>
-                        <p>Nasabah Aktif</p>
-                    </div>
-                    <div class="stat-item animate-on-scroll">
-                        <i class="fas fa-box-open"></i>
-                        <span class="stat-number" data-target="0">0</span>
-                        <p>Jenis Sampah Terkumpul</p> </div>
-                    </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+    <nav id="navbar">
+        <div class="logo" onclick="window.scrollTo(0,0)">
+            <div class="logo-icon">E</div>
+            Eco<span>Bank.</span>
+        </div>
         
-        <section id="update-data" class="content-section">
-            <div class="container">
-                <h2 class="section-title animate-on-scroll">Update & Unduh Data Sampah</h2>
-                <p class="section-subtitle animate-on-scroll">
-                    Masukkan data terbaru dari hasil penimbangan sampah untuk membuat laporan dalam format Excel.
-                </p>
-                <form id="data-form" class="animate-on-scroll">
-                    <div class="form-group">
-                        <label for="jumlah-nasabah">Jumlah Nasabah</label>
-                        <input type="number" id="jumlah-nasabah" placeholder="Contoh: 15" required>
+        <div class="nav-content" id="navContent">
+            <div class="nav-links" id="navLinksLanding">
+                <a href="#home" class="nav-link">Beranda</a>
+                <a href="#kategori" class="nav-link">Kategori</a>
+                <a href="#cara-kerja" class="nav-link">Cara Kerja</a>
+                <a href="#faq" class="nav-link">FAQ</a>
+            </div>
+
+            <div class="nav-links" id="navLinksDashboard" style="display: none;">
+                <a href="#" class="nav-link" onclick="switchView('landing')">Halaman Utama</a>
+                <a href="#" class="nav-link" onclick="switchView('dashboard')" style="color: white; font-weight: 700;">Dashboard Member</a>
+                <a href="adminsampah.html" class="nav-link" id="navLinkAdmin" style="display: none; color: #fbbf24; font-weight: 700; border: 1px solid #fbbf24; padding: 0.3rem 1rem; border-radius: 50px;">👑 Panel Admin</a>
+            </div>
+
+            <div class="btn-group" id="navAuthBtns">
+                <button class="btn btn-outline" onclick="openModal('login')">Masuk</button>
+                <button class="btn" onclick="openModal('register')">Daftar</button>
+            </div>
+        </div>
+
+        <div class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </div>
+    </nav>
+
+    <div id="landing-view">
+        <section id="home" class="hero" style="min-height: 100vh;">
+            <div class="hero-text">
+                <div class="hero-badge">🌱 Platform #1 Daur Ulang</div>
+                <h1>Ubah Sampah Jadi <span>Peluang Baru</span></h1>
+                <p>Ubah gaya hidupmu. Pilah sampah dari rumah, biarkan kurir kami menjemputnya, dan nikmati poin reward untuk setiap aksi nyata menjaga bumi.</p>
+                
+                <div class="hero-btn-group" id="heroAuthBtns">
+                    <button class="btn" style="padding: 1.2rem 2.5rem; font-size: 1.1rem;" onclick="openModal('register')">Mulai Sekarang</button>
+                    <button class="btn btn-outline" style="padding: 1.2rem 2.5rem; font-size: 1.1rem;" onclick="openModal('login')">Masuk Akun</button>
+                </div>
+                
+                <div class="hero-stats">
+                    <div class="stat-item">
+                        <h3>50K+</h3><p>Member Aktif</p>
                     </div>
-                    <div class="form-group">
-                        <label for="berat-sampah">Berat Sampah (kg)</label>
-                        <input type="number" step="0.1" id="berat-sampah" placeholder="Contoh: 25.5" required>
+                    <div class="stat-item">
+                        <h3>120T</h3><p>Sampah Dikelola</p>
                     </div>
-                    <div class="form-group">
-                        <label for="jenis-sampah">Jenis Sampah</label>
-                        <select id="jenis-sampah" required>
-                            <option value="" disabled selected>Pilih Jenis Sampah</option>
-                            <option value="Plastik">Plastik</option>
-                            <option value="Kertas / Kardus">Kertas / Kardus</option>
-                            <option value="Logam">Logam</option>
-                            <option value="Kaca">Kaca</option>
-                            <option value="Campuran">Campuran</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="total-rupiah">Total Rupiah (Rp)</label>
-                        <input type="number" id="total-rupiah" placeholder="Contoh: 75000" required>
-                    </div>
-                    <button type="submit" class="cta-button">Unduh Data (Excel)</button>
-                </form>
+                </div>
+            </div>
+            
+            <div class="hero-img">
+                <div class="glass" style="width: 380px; height: 480px; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; padding: 3rem; background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.01) 100%);">
+                    <div style="font-size: 6rem; margin-bottom: 1.5rem; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.3));">🌍</div>
+                    <h3 style="font-size: 1.8rem; margin-bottom: 0.5rem;">Aksi Nyata.</h3>
+                    <p style="font-size: 1rem; color: var(--text-muted); line-height: 1.6;">Lacak jejak karbonmu dan jadilah bagian dari revolusi hijau hari ini.</p>
+                </div>
             </div>
         </section>
 
-        <section id="kontak" class="content-section">
-            <div class="container">
-                <h2 class="section-title animate-on-scroll">Hubungi Kami</h2>
-                <p class="animate-on-scroll">Punya pertanyaan atau ingin bergabung? Kunjungi kami di alamat berikut atau hubungi nomor di bawah ini.</p>
-                <p class="animate-on-scroll"><strong>Alamat:</strong> Jl. Lingkungan Bersih No. 123, Jakarta</p>
-                <p class="animate-on-scroll"><strong>Telepon:</strong> (021) 123-4567</p>
+        <section id="kategori">
+            <div class="reveal">
+                <h2 class="section-title">Apa yang Bisa <span>Disetor?</span></h2>
+                <p class="section-subtitle">Kami menerima berbagai jenis limbah anorganik. Pastikan sampah dalam keadaan kering dan bersih sebelum dijemput.</p>
+            </div>
+            
+            <div class="category-grid reveal" style="transition-delay: 0.2s;">
+                <div class="cat-card"><div class="cat-icon">🍼</div><div class="cat-info"><h4>Plastik PET</h4><p>Botol Minuman</p></div></div>
+                <div class="cat-card"><div class="cat-icon">📦</div><div class="cat-info"><h4>Kertas Kardus</h4><p>Karton, HVS</p></div></div>
+                <div class="cat-card"><div class="cat-icon">🥫</div><div class="cat-info"><h4>Logam</h4><p>Kaleng, Seng</p></div></div>
+                <div class="cat-card"><div class="cat-icon">🍾</div><div class="cat-info"><h4>Kaca</h4><p>Botol Kaca</p></div></div>
+                <div class="cat-card"><div class="cat-icon">🔌</div><div class="cat-info"><h4>E-Waste</h4><p>Kabel, Gadget</p></div></div>
+                <div class="cat-card"><div class="cat-icon">🍳</div><div class="cat-info"><h4>Minyak</h4><p>Sisa Jelantah</p></div></div>
             </div>
         </section>
-    </main>
 
-    <footer>
-        <p>&copy; 2025 Bank Sampah Digital. Semua Hak Cipta Dilindungi.</p>
-    </footer>
+        <section id="cara-kerja">
+            <h2 class="section-title reveal">Alur <span>Sirkular</span></h2>
+            <p class="section-subtitle reveal">Tiga langkah sederhana untuk mengubah sampah rumah tangga Anda menjadi manfaat ekonomi.</p>
+            <div class="steps-grid">
+                <div class="step-card glass reveal">
+                    <div class="impact-icon-wrapper" style="margin: 0 auto 1.5rem;">📱</div>
+                    <h3>Request Jemput</h3>
+                    <p>Pilah sampah di rumah dan jadwalkan penjemputan langsung melalui dashboard aplikasi.</p>
+                </div>
+                <div class="step-card glass reveal" style="transition-delay: 0.1s;">
+                    <div class="impact-icon-wrapper" style="margin: 0 auto 1.5rem;">⚖️</div>
+                    <h3>Timbang di Tempat</h3>
+                    <p>Kurir Eco-Hero kami akan datang menimbang ulang secara presisi dengan timbangan digital.</p>
+                </div>
+                <div class="step-card glass reveal" style="transition-delay: 0.2s;">
+                    <div class="impact-icon-wrapper" style="margin: 0 auto 1.5rem;">🎁</div>
+                    <h3>Dapatkan Poin</h3>
+                    <p>Saldo otomatis bertambah. Tukarkan dengan pulsa, uang elektronik, atau donasi lingkungan.</p>
+                </div>
+            </div>
+        </section>
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-    <script src="script.js"></script>
+        <section id="impact" style="padding-top: 2rem;">
+            <div class="glass reveal" style="padding: 4rem; text-align: center; background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(0,0,0,0.2)); border: 1px solid rgba(16,185,129,0.2);">
+                <h2 style="font-size: 2.5rem; margin-bottom: 3rem;">Dampak Kita Bersama</h2>
+                <div class="impact-grid">
+                    <div>
+                        <h3 style="font-size: 3.5rem; color: var(--accent); font-weight: 800; line-height: 1;">25K</h3>
+                        <p style="color: var(--text-muted); margin-top: 0.5rem; font-weight: 500;">Pohon Terselamatkan</p>
+                    </div>
+                    <div>
+                        <h3 style="font-size: 3.5rem; color: var(--accent); font-weight: 800; line-height: 1;">1.2M</h3>
+                        <p style="color: var(--text-muted); margin-top: 0.5rem; font-weight: 500;">Liter Air Dihemat</p>
+                    </div>
+                    <div>
+                        <h3 style="font-size: 3.5rem; color: var(--accent); font-weight: 800; line-height: 1;">850K</h3>
+                        <p style="color: var(--text-muted); margin-top: 0.5rem; font-weight: 500;">kWh Energi Terjaga</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="faq">
+            <h2 class="section-title reveal">Pusat <span>Bantuan</span></h2>
+            <div class="faq-container reveal">
+                <div class="faq-item">
+                    <button class="faq-question">Apakah ada minimal berat untuk penjemputan gratis? <span>+</span></button>
+                    <div class="faq-answer"><p style="padding-top: 0.5rem;">Demi efisiensi operasional dan pengurangan emisi kurir, kami menetapkan minimal berat 3 Kg untuk layanan jemput. Di bawah itu, Anda dapat menitipkannya di Eco-Drop Point terdekat.</p></div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question">Bagaimana konversi nilai tukar poin? <span>+</span></button>
+                    <div class="faq-answer"><p style="padding-top: 0.5rem;">Sistem kami berpatokan pada harga pasar daur ulang *real-time*. Contohnya, plastik PET bening dihargai lebih tinggi daripada kardus bekas per kilogramnya. 1 Poin = Rp 1.</p></div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question">Area mana saja yang dijangkau? <span>+</span></button>
+                    <div class="faq-answer"><p style="padding-top: 0.5rem;">Saat ini kami melayani area Jabodetabek. Namun kami terus berekspansi secara agresif ke kota-kota besar lainnya di seluruh Indonesia.</p></div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <div class="footer-content">
+                <div class="footer-col">
+                    <div class="logo" style="margin-bottom: 1.5rem;"><div class="logo-icon">E</div>Eco<span>Bank.</span></div>
+                    <p>Startup *climate-tech* yang berdedikasi membangun sirkular ekonomi melalui teknologi digital yang transparan dan inklusif.</p>
+                </div>
+                <div class="footer-col">
+                    <h4>Navigasi</h4>
+                    <a href="#kategori">Kategori Sampah</a>
+                    <a href="#cara-kerja">Panduan Layanan</a>
+                </div>
+                <div class="footer-col">
+                    <h4>Perusahaan</h4>
+                    <a href="#">Tentang Kami</a>
+                    <a href="#">Syarat & Ketentuan</a>
+                </div>
+                <div class="footer-col">
+                    <h4>Hubungi Kami</h4>
+                    <p>📍 Gedung Startup Hijau, Jakarta</p>
+                    <p>✉️ halo@ecobank.id</p>
+                </div>
+            </div>
+            <div class="footer-bottom">&copy; 2026 EcoBank Technology. Build with 🌱 for the Earth.</div>
+        </footer>
+    </div> 
+    
+    <div id="dashboard-view">
+        <section style="padding-top: 8rem; padding-bottom: 4rem; min-height: 100vh;">
+            <div class="dash-header reveal">
+                <div>
+                    <h1 style="font-size: 2.2rem; margin-bottom: 0.5rem;">Dashboard Member</h1>
+                    <p style="color: var(--text-muted);">Mari buat perubahan hari ini.</p>
+                </div>
+                <div class="dash-profile">
+                    <div style="text-align: right;">
+                        <h3 id="userNameDisplay" style="font-size: 1.1rem;">Loading...</h3>
+                        <p style="color: var(--accent); font-size: 0.85rem; font-weight: 600;">Tier: Green Member</p>
+                    </div>
+                    <div class="avatar" id="userAvatar">⏳</div>
+                </div>
+            </div>
+
+            <div id="adminWelcome" style="display: none; text-align: center; padding: 4rem 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; margin-top: 1rem;">
+                <div style="font-size: 4rem; margin-bottom: 1rem;">👑</div>
+                <h2 style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--warning);">Mode Administrator Aktif</h2>
+                <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 1rem;">Saldo poin Anda bernilai <b>NULL</b>. Fitur penukaran & penyetoran sampah tidak diperuntukkan bagi admin.</p>
+                <a href="adminsampah.html" class="btn" style="background: var(--warning); border-color: var(--warning); color: #0f172a; font-weight: 800; padding: 1rem 2.5rem;">Buka Panel Pengaturan Admin</a>
+            </div>
+
+            <div class="dash-grid" id="userDashboardContent">
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    
+                    <div class="dash-card glass reveal" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(0,0,0,0)); border-color: rgba(16, 185, 129, 0.3);">
+                        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 0.5rem; font-weight: 500;">Total Saldo Aktif</p>
+                        <h1 style="font-size: 3.5rem; color: white; margin-bottom: 2rem; font-weight: 800; letter-spacing: -1px;" id="userPoints">0 <span style="font-size: 1.2rem; color: var(--accent);">Pts</span></h1>
+                        <button class="btn" style="width: 100%; padding: 1rem;" onclick="openRedeemModal()">Tukarkan Poin</button>
+                    </div>
+
+                    <div class="dash-card glass reveal" style="transition-delay: 0.1s;">
+                        <h3 style="margin-bottom: 1.5rem; font-size: 1.2rem;">Kirim Setoran Sampah</h3>
+                        <form id="depositForm" onsubmit="submitDeposit(event)">
+                            <div class="input-group">
+                                <label>Kategori Sampah (Harga per Kg/L)</label>
+                                <select id="wasteCategory" onchange="calculateDeposit()" required>
+                                    <option value="" disabled selected>Pilih Kategori...</option>
+                                    <option value="2500" data-name="Plastik PET">Plastik PET (Rp 2.500/kg)</option>
+                                    <option value="1500" data-name="Kertas/Kardus BK">Kertas/Kardus BK (Rp 1.500/kg)</option>
+                                    <option value="3000" data-name="Besi / Logam">Besi / Logam (Rp 3.000/kg)</option>
+                                    <option value="1400" data-name="Plastik Ember">Plastik Ember (Rp 1.400/kg)</option>
+                                    <option value="500" data-name="Kaca Beling">Kaca Beling (Rp 500/kg)</option>
+                                    <option value="4000" data-name="Minyak Jelantah">Minyak Jelantah (Rp 4.000/L)</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Estimasi Berat / Jumlah (Kg / Liter)</label>
+                                <input type="number" id="wasteWeight" min="0.1" step="0.1" placeholder="Contoh: 3.5" oninput="calculateDeposit()" required>
+                            </div>
+                            
+                            <div class="input-group">
+                                <label>Bukti Foto Sampah</label>
+                                <div class="file-upload-wrapper">
+                                    <span class="file-upload-btn">📸 Klik untuk Upload Foto</span>
+                                    <input type="file" id="wastePhoto" accept="image/*" onchange="previewImage(event)" required>
+                                </div>
+                                <img id="imagePreview" src="#" alt="Preview">
+                            </div>
+                            
+                            <div class="input-group">
+                                <label>Alamat Lengkap Penjemputan</label>
+                                <textarea id="wasteAddress" placeholder="Contoh: Jl. Merdeka No. 12, RT 01/RW 02..." required></textarea>
+                            </div>
+                            
+                            <div class="input-group">
+                                <label>Titik Lokasi Maps (Otomatis & Bisa Digeser)</label>
+                                <div id="map"></div>
+                                <div class="map-helper">📍 Geser pin merah untuk menyesuaikan titik lokasi rumah Anda.</div>
+                                <input type="hidden" id="latitude">
+                                <input type="hidden" id="longitude">
+                                <button type="button" class="btn btn-outline" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="getLocation()">📍 Gunakan Lokasi Saat Ini</button>
+                            </div>
+                            <div class="input-group">
+                                <label>Potensi Poin Didapat (1 Poin = Rp 1)</label>
+                                <input type="text" id="wasteEstPoints" placeholder="0 Pts" readonly style="background: rgba(16, 185, 129, 0.1); color: var(--accent); font-weight: bold; cursor: not-allowed;">
+                            </div>
+                            <button type="submit" class="btn btn-outline" style="width: 100%; padding: 1rem; margin-top: 0.5rem; border-color: var(--accent); color: var(--accent);">Jadwalkan Penjemputan</button>
+                        </form>
+                    </div>
+
+                </div>
+
+                <div class="dash-card glass reveal" style="transition-delay: 0.2s; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem;">
+                        <h3 style="font-size: 1.2rem;">Riwayat Transaksi</h3>
+                        <span style="color: var(--text-muted); font-size: 0.9rem; font-weight: 500;">Status</span>
+                    </div>
+                    
+                    <div class="history-list" id="historyContainer">
+                        <div id="emptyHistory" style="text-align: center; color: var(--text-muted); margin-top: 2rem;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">📭</div>
+                            <p>Belum ada riwayat aktivitas.</p>
+                            <p style="font-size: 0.85rem; margin-top: 0.5rem;">Setor sampah pertamamu sekarang!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div> 
+    
+    <div class="modal" id="authModal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal('authModal')">&times;</span>
+            <div class="logo" style="justify-content: center; margin-bottom: 1.5rem; font-size: 1.5rem;"><div class="logo-icon" style="width:30px; height:30px; font-size: 1rem;">E</div>Eco<span>Bank.</span></div>
+            
+            <h2 id="modalTitle">Masuk ke Akun</h2>
+            <p id="modalDesc">Mulai langkah kecil untuk bumi hari ini.</p>
+
+            <form id="authForm" onsubmit="handleAuth(event)">
+                
+                <div id="registerFields" style="display: none;">
+                    <div class="input-group">
+                        <label>Nama Lengkap</label>
+                        <input type="text" id="regName" placeholder="Contoh: Budi Santoso">
+                    </div>
+                    <div class="input-group mobile-col" style="display: flex; gap: 10px;">
+                        <div style="flex:1;">
+                            <label>No. Telepon</label>
+                            <input type="tel" id="regPhone" placeholder="0812..." pattern="[0-9]{10,14}">
+                        </div>
+                        <div style="flex:1;">
+                            <label>WhatsApp (Aktif)</label>
+                            <input type="tel" id="regWa" placeholder="0812..." pattern="[0-9]{10,14}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Alamat Email</label>
+                    <input type="email" id="emailInput" placeholder="budi@email.com" required>
+                </div>
+                <div class="input-group">
+                    <label>Kata Sandi</label>
+                    <input type="password" id="passwordInput" placeholder="Minimal 6 karakter" required minlength="6">
+                </div>
+
+                <div id="captchaContainer" class="captcha-box">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                        <label style="margin:0;">Jawab untuk verifikasi:</label>
+                        <span id="captchaQuestion" style="font-weight: 800; color: var(--accent); background: rgba(16,185,129,0.1); padding: 0.3rem 0.8rem; border-radius: 8px;">? + ?</span>
+                    </div>
+                    <input type="number" id="captchaInput" placeholder="Hasil penjumlahan" required style="width: 100%; padding: 0.8rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: white;">
+                </div>
+
+                <button type="submit" id="submitBtn" class="btn" style="width: 100%; font-size: 1rem; padding: 0.9rem;">
+                    <span id="btnText">Masuk</span>
+                </button>
+            </form>
+
+            <div class="divider">ATAU Lanjutkan Dengan</div>
+            
+            <button class="btn btn-google" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 0.8rem;" onclick="loginWithGoogle()" type="button">
+                <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Google Akun
+            </button>
+
+            <div class="switch-form" onclick="toggleAuthMode()" style="margin-top: 2rem;">
+                <span id="switchPrompt">Belum menjadi member?</span> <span id="switchText">Daftar Gratis</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="redeemModal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal('redeemModal')">&times;</span>
+            <div class="logo" style="justify-content: center; margin-bottom: 1.5rem; font-size: 1.5rem;"><div class="logo-icon" style="width:30px; height:30px; font-size: 1rem;">💰</div></div>
+            
+            <h2>Tarik Poin Saldo</h2>
+            <p>Pilih nominal penukaran poin ke rekening atau e-wallet Anda.</p>
+
+            <form id="redeemForm" onsubmit="submitRedeem(event)">
+                <div class="input-group">
+                    <label>Pilih Nominal Pencairan (1 Pts = Rp 1)</label>
+                    <select id="redeemAmount" required>
+                        <option value="" disabled selected>Pilih Nominal...</option>
+                        <option value="50000">Rp 50.000 (50.000 Pts)</option>
+                        <option value="100000">Rp 100.000 (100.000 Pts)</option>
+                        <option value="150000">Rp 150.000 (150.000 Pts)</option>
+                        <option value="200000">Rp 200.000 (200.000 Pts)</option>
+                        <option value="250000">Rp 250.000 (250.000 Pts)</option>
+                        <option value="500000">Rp 500.000 (500.000 Pts)</option>
+                        <option value="1000000">Rp 1.000.000 (1.000.000 Pts)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Metode & Nomor Tujuan Pencairan</label>
+                    <input type="text" id="redeemDestination" placeholder="Contoh: DANA - 08123456789 / BCA - 12345" required>
+                </div>
+
+                <button type="submit" class="btn" style="width: 100%; font-size: 1rem; padding: 0.9rem;">
+                    Ajukan Penukaran
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. SUPABASE CONFIGURATION
+        // ==========================================
+        const SUPABASE_URL = 'https://yzerautfyyfhldzpwyiy.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_JA9cuYEGjfGSyVQgwktrkA_-4RQLFgN';
+        
+        let supaClient;
+        let currentUserProfile = null; 
+
+        window.onload = async () => {
+            try {
+                supaClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log("Supabase Client terinisialisasi.");
+
+                const { data: { session } } = await supaClient.auth.getSession();
+                if (session) {
+                    const { data: profile } = await supaClient.from('profiles').select('*').eq('id', session.user.id).single();
+                    loadDashboardView(session.user, profile);
+                }
+            } catch (error) {
+                console.error("Gagal menginisialisasi Supabase:", error);
+            }
+        };
+
+        /* === MAP & PHOTO UPLOAD LOGIC === */
+        let map, marker;
+        let base64Photo = null;
+
+        function initMap() {
+            // Default center: Jakarta. Ganti jika Anda ingin terfokus di IPB/Bogor
+            const defaultLat = -6.2088; 
+            const defaultLng = 106.8456; 
+            
+            if(!map) {
+                map = L.map('map').setView([defaultLat, defaultLng], 12);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; OpenStreetMap'
+                }).addTo(map);
+
+                marker = L.marker([defaultLat, defaultLng], {draggable: true}).addTo(map);
+
+                // Update input saat pin digeser
+                marker.on('dragend', function(e) {
+                    const pos = marker.getLatLng();
+                    document.getElementById('latitude').value = pos.lat;
+                    document.getElementById('longitude').value = pos.lng;
+                });
+                
+                // Set default input
+                document.getElementById('latitude').value = defaultLat;
+                document.getElementById('longitude').value = defaultLng;
+            }
+            // Fix map rendering bug saat di dalam div hidden/tab
+            setTimeout(() => { map.invalidateSize(); }, 500);
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                showToast("Mencari lokasi Anda...", "info");
+                navigator.geolocation.getCurrentPosition((position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    map.setView([lat, lng], 15);
+                    marker.setLatLng([lat, lng]);
+                    
+                    document.getElementById('latitude').value = lat;
+                    document.getElementById('longitude').value = lng;
+                    showToast("Lokasi berhasil ditemukan!", "success");
+                }, () => {
+                    showToast("Gagal mendapat lokasi. Geser pin manual.", "error");
+                });
+            } else {
+                showToast("Browser tidak support GPS.", "error");
+            }
+        }
+
+        function previewImage(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            
+            if(file.size > 2000000) { // Limit 2MB
+                showToast("Ukuran foto maksimal 2MB!", "warning");
+                event.target.value = ''; return;
+            }
+
+            reader.onload = function(e) {
+                const preview = document.getElementById('imagePreview');
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                base64Photo = e.target.result; // Simpan base64 string
+            }
+            if(file) reader.readAsDataURL(file);
+        }
+
+
+        /* === UI INTERACTIONS === */
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 20) nav.classList.add('scrolled');
+            else nav.classList.remove('scrolled');
+        });
+
+        const revealElements = document.querySelectorAll('.reveal');
+        const revealObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if(entry.isIntersecting) { entry.target.classList.add('active'); observer.unobserve(entry.target); }
+            });
+        }, { threshold: 0.1 });
+        revealElements.forEach(el => revealObserver.observe(el));
+
+        const faqItems = document.querySelectorAll('.faq-item');
+        faqItems.forEach(item => {
+            const question = item.querySelector('.faq-question');
+            question.addEventListener('click', () => {
+                faqItems.forEach(otherItem => {
+                    if(otherItem !== item && otherItem.classList.contains('active')) {
+                        otherItem.classList.remove('active');
+                        otherItem.querySelector('.faq-question span').textContent = '+';
+                    }
+                });
+                item.classList.toggle('active');
+                question.querySelector('span').textContent = item.classList.contains('active') ? '-' : '+';
+            });
+        });
+
+        const hamburger = document.getElementById('hamburger');
+        const navContent = document.getElementById('navContent');
+        const navLinksArr = document.querySelectorAll('.nav-link');
+
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('active'); navContent.classList.toggle('active');
+        });
+        navLinksArr.forEach(link => {
+            link.addEventListener('click', () => {
+                hamburger.classList.remove('active'); navContent.classList.remove('active');
+            });
+        });
+
+        /* === TOAST NOTIFICATION LOGIC === */
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toastBox');
+            const toastMsg = document.getElementById('toastMsg');
+            const icon = toast.querySelector('.toast-icon');
+
+            toastMsg.textContent = message;
+            toast.className = ''; 
+            
+            if(type === 'error') {
+                toast.classList.add('error', 'show');
+                icon.textContent = '❌';
+            } else if (type === 'warning') {
+                toast.classList.add('warning', 'show');
+                icon.textContent = '⚠️';
+                toast.style.borderLeftColor = 'var(--warning)';
+            } else if(type === 'info') {
+                toast.classList.add('show');
+                icon.textContent = 'ℹ️';
+                toast.style.borderLeftColor = '#38bdf8';
+            } else {
+                toast.classList.add('success', 'show');
+                icon.textContent = '✅';
+                toast.style.borderLeftColor = 'var(--accent)';
+            }
+
+            setTimeout(() => { toast.classList.remove('show'); }, 3500);
+        }
+
+        /* === MODAL & AUTH LOGIC === */
+        const modal = document.getElementById('authModal');
+        let isLoginMode = true;
+        let expectedCaptchaAnswer = 0;
+
+        function generateCaptcha() {
+            const num1 = Math.floor(Math.random() * 10) + 1;
+            const num2 = Math.floor(Math.random() * 10) + 1;
+            expectedCaptchaAnswer = num1 + num2;
+            document.getElementById('captchaQuestion').textContent = `${num1} + ${num2} = ?`;
+            document.getElementById('captchaInput').value = '';
+        }
+
+        function openModal(mode = 'login') {
+            hamburger.classList.remove('active'); navContent.classList.remove('active');
+            
+            if (mode === 'register' && isLoginMode) toggleAuthMode();
+            if (mode === 'login' && !isLoginMode) toggleAuthMode();
+
+            generateCaptcha();
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+
+        function closeModal(idStr) {
+            const modalEl = document.getElementById(idStr);
+            modalEl.classList.remove('show');
+            setTimeout(() => modalEl.style.display = 'none', 300);
+        }
+
+        function toggleAuthMode() {
+            isLoginMode = !isLoginMode;
+            
+            const title = document.getElementById('modalTitle');
+            const desc = document.getElementById('modalDesc');
+            const registerFields = document.getElementById('registerFields');
+            const btnText = document.getElementById('btnText');
+            const switchPrompt = document.getElementById('switchPrompt');
+            const switchText = document.getElementById('switchText');
+
+            const regInputs = [document.getElementById('regName'), document.getElementById('regPhone'), document.getElementById('regWa')];
+
+            if(isLoginMode) {
+                title.textContent = "Masuk ke Akun"; desc.textContent = "Lanjutkan misimu menyelamatkan bumi hari ini.";
+                registerFields.style.display = "none";
+                regInputs.forEach(input => input.removeAttribute('required'));
+                btnText.textContent = "Masuk Secure";
+                switchPrompt.textContent = "Belum menjadi member?"; switchText.textContent = "Daftar Gratis";
+            } else {
+                title.textContent = "Buat Akun Baru"; desc.textContent = "Lengkapi data untuk membuat profil Hijau Anda.";
+                registerFields.style.display = "block";
+                regInputs.forEach(input => input.setAttribute('required', 'true'));
+                btnText.textContent = "Daftar Sekarang";
+                switchPrompt.textContent = "Sudah memiliki akun?"; switchText.textContent = "Masuk di sini";
+            }
+            generateCaptcha(); 
+        }
+
+        /* === VIEW SWITCH LOGIC === */
+        function switchView(viewName) {
+            hamburger.classList.remove('active'); navContent.classList.remove('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            if (viewName === 'landing') {
+                document.getElementById('landing-view').style.display = 'block';
+                document.getElementById('dashboard-view').style.display = 'none';
+                
+                const landingReveals = document.querySelectorAll('#landing-view .reveal');
+                landingReveals.forEach(el => { el.classList.remove('active'); revealObserver.observe(el); });
+            } else if (viewName === 'dashboard') {
+                document.getElementById('landing-view').style.display = 'none';
+                document.getElementById('dashboard-view').style.display = 'block';
+                
+                const dashReveals = document.querySelectorAll('#dashboard-view .reveal');
+                dashReveals.forEach(el => { el.classList.remove('active'); revealObserver.observe(el); });
+                
+                // Initialize map if it hasn't been initialized yet
+                if(currentUserProfile?.role !== 'admin'){
+                    initMap();
+                }
+            }
+        }
+
+        /* === DASHBOARD: SETOR SAMPAH LOGIC === */
+        function calculateDeposit() {
+            const typeSelect = document.getElementById('wasteCategory');
+            const weightInput = document.getElementById('wasteWeight').value;
+            const pointsOutput = document.getElementById('wasteEstPoints');
+
+            if (typeSelect.value && weightInput) {
+                const price = parseFloat(typeSelect.value); 
+                const weight = parseFloat(weightInput);
+                const total = Math.floor(price * weight);
+                pointsOutput.value = total.toLocaleString('id-ID') + " Pts";
+            } else {
+                pointsOutput.value = "0 Pts";
+            }
+        }
+
+        async function submitDeposit(e) {
+            e.preventDefault();
+            const typeSelect = document.getElementById('wasteCategory');
+            const weightInput = document.getElementById('wasteWeight').value;
+            const addressInput = document.getElementById('wasteAddress').value;
+            const lat = document.getElementById('latitude').value;
+            const lng = document.getElementById('longitude').value;
+            
+            if (!typeSelect.value || !weightInput || !addressInput || !base64Photo) {
+                showToast("Mohon lengkapi semua data, termasuk foto & alamat.", "error"); return;
+            }
+
+            const price = parseFloat(typeSelect.value);
+            const weight = parseFloat(weightInput);
+            const earnedPoints = Math.floor(price * weight);
+            const categoryName = typeSelect.options[typeSelect.selectedIndex].getAttribute('data-name');
+            
+            showToast("Mengirim data setoran...", "info");
+
+            try {
+                if(!supaClient) { throw new Error("Koneksi Supabase belum siap."); }
+
+                const { data: { session }, error: sessionError } = await supaClient.auth.getSession();
+                if (sessionError || !session) throw new Error("Anda harus login untuk setor sampah");
+
+                const { error: insertError } = await supaClient
+                    .from('transactions')
+                    .insert([
+                        { 
+                            user_id: session.user.id, 
+                            waste_type: categoryName, 
+                            weight: weight, 
+                            points: earnedPoints,
+                            address: addressInput,
+                            location_lat: parseFloat(lat),
+                            location_lng: parseFloat(lng),
+                            photo_url: base64Photo // Dalam produksi skalabilitas tinggi, sebaiknya upload ke Supabase Storage lalu simpan URL-nya.
+                        }
+                    ]);
+
+                if (insertError) throw insertError;
+
+                showToast("Berhasil! Menunggu kurir.", "success");
+                
+                document.getElementById('depositForm').reset();
+                document.getElementById('wasteEstPoints').value = "0 Pts";
+                document.getElementById('imagePreview').style.display = 'none';
+                base64Photo = null;
+                
+                loadUserTransactions(session.user.id);
+
+            } catch (err) {
+                console.error(err);
+                showToast("Gagal mengirim data: " + err.message, "error");
+            }
+        }
+
+        /* === MODAL & REDEEM POIN LOGIC === */
+        const redeemModal = document.getElementById('redeemModal');
+
+        function openRedeemModal() {
+            if (!currentUserProfile) {
+                showToast("Data profil belum termuat.", "error");
+                return;
+            }
+            redeemModal.style.display = 'flex';
+            setTimeout(() => redeemModal.classList.add('show'), 10);
+            document.getElementById('redeemForm').reset();
+        }
+
+        function closeRedeemModal() {
+            redeemModal.classList.remove('show');
+            setTimeout(() => redeemModal.style.display = 'none', 300);
+        }
+
+        async function submitRedeem(e) {
+            e.preventDefault();
+            const amount = parseInt(document.getElementById('redeemAmount').value);
+            const destination = document.getElementById('redeemDestination').value;
+
+            if (!currentUserProfile || currentUserProfile.points < amount) {
+                showToast("Poin Anda tidak mencukupi.", "error");
+                return;
+            }
+
+            showToast("Memproses pengajuan...", "info");
+
+            try {
+                const { data: { session } } = await supaClient.auth.getSession();
+                
+                const { error: insertError } = await supaClient
+                    .from('redemptions')
+                    .insert([
+                        {
+                            user_id: session.user.id,
+                            amount: amount,
+                            destination: destination,
+                            status: 'menunggu'
+                        }
+                    ]);
+
+                if (insertError) throw insertError;
+
+                showToast("Pengajuan berhasil! Tunggu konfirmasi.", "success");
+                closeRedeemModal();
+                
+                loadUserTransactions(session.user.id);
+            } catch (err) {
+                console.error(err);
+                showToast("Gagal memproses: " + err.message, "error");
+            }
+        }
+
+        /* === HISTORY & POIN LOGIC === */
+        async function loadUserTransactions(userId) {
+            try {
+                if(!supaClient) return;
+
+                const trxPromise = supaClient.from('transactions').select('*').eq('user_id', userId);
+                const redPromise = supaClient.from('redemptions').select('*').eq('user_id', userId);
+
+                const [trxRes, redRes] = await Promise.all([trxPromise, redPromise]);
+
+                const transactions = trxRes.data || [];
+                const redemptions = redRes.data || [];
+
+                // 1. HITUNG POIN REAL-TIME 
+                let calculatedPoints = 0;
+                
+                transactions.forEach(t => {
+                    if (t.status === 'diterima' || t.status === 'berhasil') {
+                        calculatedPoints += t.points;
+                    }
+                });
+
+                redemptions.forEach(r => {
+                    if (r.status !== 'ditolak') {
+                        calculatedPoints -= r.amount;
+                    }
+                });
+
+                if (calculatedPoints < 0) calculatedPoints = 0;
+
+                // Update Saldo Visual User
+                if (currentUserProfile) currentUserProfile.points = calculatedPoints;
+                
+                if (currentUserProfile?.role !== 'admin') {
+                    document.getElementById('userPoints').innerHTML = `${calculatedPoints.toLocaleString('id-ID')} <span style="font-size: 1.2rem; color: var(--accent);">Pts</span>`;
+                }
+
+                supaClient.from('profiles').update({ points: calculatedPoints }).eq('id', userId).then(()=>{});
+
+                // 2. RENDER HISTORY
+                const combinedHistory = [
+                    ...transactions.map(t => ({ ...t, activityType: 'deposit', dateObj: new Date(t.created_at) })),
+                    ...redemptions.map(r => ({ ...r, activityType: 'redemption', dateObj: new Date(r.created_at) }))
+                ].sort((a, b) => b.dateObj - a.dateObj);
+
+                const historyContainer = document.getElementById('historyContainer');
+                historyContainer.innerHTML = '';
+
+                if (combinedHistory.length === 0) {
+                    historyContainer.innerHTML = `
+                        <div id="emptyHistory" style="text-align: center; color: var(--text-muted); margin-top: 2rem;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">📭</div>
+                            <p>Belum ada riwayat aktivitas.</p>
+                            <p style="font-size: 0.85rem; margin-top: 0.5rem;">Setor sampah pertamamu sekarang!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                combinedHistory.forEach(item => {
+                    const date = item.dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+                    
+                    let statusBadge = '';
+                    if (item.status === 'menunggu') statusBadge = `<div class="status-badge status-menunggu">Menunggu</div>`;
+                    else if (item.status === 'diterima' || item.status === 'berhasil') statusBadge = `<div class="status-badge status-diterima">Berhasil</div>`;
+                    else if (item.status === 'ditolak') statusBadge = `<div class="status-badge status-ditolak">Ditolak</div>`;
+
+                    const newItem = document.createElement('div');
+                    newItem.className = 'history-item';
+
+                    if (item.activityType === 'deposit') {
+                        newItem.innerHTML = `
+                            <div>
+                                <h4 style="font-weight: 700; margin-bottom: 0.2rem;">Setoran Sampah</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted);">
+                                    ${date} • ${item.weight} Kg ${item.waste_type}
+                                </p>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 0.3rem; color: ${item.status === 'ditolak' ? 'var(--text-muted)' : 'var(--accent)'};">
+                                    ${item.status === 'ditolak' ? '0' : '+ ' + item.points.toLocaleString('id-ID')} Pts
+                                </div>
+                                ${statusBadge}
+                            </div>
+                        `;
+                    } else {
+                        let waButtonHtml = '';
+                        if (item.status === 'diterima' || item.status === 'berhasil') {
+                            const waPesan = encodeURIComponent(`Halo Admin EcoBank, saya mengkonfirmasi pencairan Rp ${item.amount.toLocaleString('id-ID')} ke ${item.destination} telah sukses. Terima kasih!`);
+                            waButtonHtml = `
+                                <a href="https://wa.me/6281234567890?text=${waPesan}" target="_blank" class="btn btn-outline" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; border-color: var(--accent); color: var(--accent); margin-top: 5px; text-decoration: none;">Konfirmasi WA</a>
+                            `;
+                        }
+
+                        newItem.innerHTML = `
+                            <div>
+                                <h4 style="font-weight: 700; margin-bottom: 0.2rem; color: var(--warning);">Tarik Saldo Poin</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted);">
+                                    ${date} • ${item.destination}
+                                </p>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 0.3rem; color: ${item.status === 'ditolak' ? 'var(--text-muted)' : 'var(--warning)'};">
+                                    ${item.status === 'ditolak' ? '0' : '- ' + item.amount.toLocaleString('id-ID')} Pts
+                                </div>
+                                ${statusBadge}
+                                ${waButtonHtml ? '<br>' + waButtonHtml : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    historyContainer.appendChild(newItem);
+                });
+
+            } catch (err) {
+                console.error("Gagal load history:", err);
+            }
+        }
+
+        // ==========================================
+        // 2. SUPABASE ADVANCED AUTH LOGIC
+        // ==========================================
+        async function loginWithGoogle() {
+            showToast("Membuka Google...", "info");
+            if(!supaClient) { showToast("Supabase belum siap.", "error"); return; }
+            try {
+                const { data, error } = await supaClient.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: { redirectTo: window.location.origin }
+                });
+                if (error) throw error;
+            } catch (error) {
+                showToast("Gagal login Google: " + error.message, "error");
+            }
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            
+            const userAnswer = parseInt(document.getElementById('captchaInput').value);
+            if (userAnswer !== expectedCaptchaAnswer) {
+                showToast("Hitungan salah.", "error");
+                generateCaptcha(); return;
+            }
+
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            const btnText = document.getElementById('btnText');
+            
+            btnText.textContent = "Memproses...";
+
+            try {
+                if(!supaClient) throw new Error("Koneksi Database belum siap.");
+
+                if (!isLoginMode) {
+                    const fullName = document.getElementById('regName').value;
+                    const phone = document.getElementById('regPhone').value;
+                    const wa = document.getElementById('regWa').value;
+
+                    const { data, error } = await supaClient.auth.signUp({
+                        email: email, password: password,
+                        options: { data: { full_name: fullName, phone: phone, wa: wa } }
+                    });
+
+                    if (error) throw error;
+                    if (data.user && data.user.identities && data.user.identities.length === 0) {
+                        showToast("Email sudah dipakai.", "error");
+                    } else {
+                        showToast("Daftar berhasil! Cek Email.", "success");
+                        closeModal('authModal'); document.getElementById('authForm').reset();
+                    }
+                } else {
+                    const { data, error } = await supaClient.auth.signInWithPassword({ email: email, password: password });
+                    if (error) throw error;
+
+                    const { data: profile } = await supaClient.from('profiles').select('*').eq('id', data.user.id).single();
+                    showToast("Login berhasil!", "success");
+                    loadDashboardView(data.user, profile);
+                }
+            } catch (error) {
+                showToast(error.message, "error");
+                generateCaptcha();
+            } finally {
+                btnText.textContent = isLoginMode ? "Masuk Secure" : "Daftar Sekarang";
+            }
+        }
+
+        function loadDashboardView(user, profile) {
+            currentUserProfile = profile; 
+
+            let displayName = user.user_metadata?.full_name || profile?.full_name || user.email.split('@')[0];
+            let avatarChar = displayName.charAt(0);
+            
+            if(user.user_metadata?.avatar_url) {
+                document.getElementById('userAvatar').innerHTML = `<img src="${user.user_metadata.avatar_url}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+            } else {
+                document.getElementById('userAvatar').textContent = avatarChar;
+            }
+
+            const adminWelcome = document.getElementById('adminWelcome');
+            const dashGrid = document.getElementById('userDashboardContent');
+
+            if(profile?.role === 'admin') {
+                document.getElementById('navLinkAdmin').style.display = 'block';
+                document.getElementById('userNameDisplay').innerHTML = `${displayName} <br><span style="color:var(--warning); font-size:0.75rem;">(Role: Admin)</span>`;
+                
+                if(dashGrid) dashGrid.style.display = 'none'; 
+                if(adminWelcome) adminWelcome.style.display = 'block'; 
+            } else {
+                document.getElementById('navLinkAdmin').style.display = 'none';
+                document.getElementById('userNameDisplay').innerHTML = displayName;
+                
+                if(dashGrid) dashGrid.style.display = 'grid'; 
+                if(adminWelcome) adminWelcome.style.display = 'none'; 
+                
+                loadUserTransactions(user.id);
+            }
+
+            closeModal('authModal');
+            switchView('dashboard');
+            
+            document.getElementById('navLinksLanding').style.display = 'none'; 
+            document.getElementById('navLinksDashboard').style.display = 'flex'; 
+            document.getElementById('heroAuthBtns').style.display = 'none'; 
+            
+            document.getElementById('navAuthBtns').innerHTML = `
+                <button class="btn btn-outline" style="border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;" onclick="handleLogout()">Keluar Akun</button>
+            `;
+            
+            document.getElementById('authForm').reset();
+        }
+
+        async function handleLogout() {
+            showToast("Sedang keluar...", "info");
+            if(supaClient) {
+                const { error } = await supaClient.auth.signOut();
+                if(error) return; 
+            }
+            
+            document.getElementById('navLinksLanding').style.display = 'flex'; 
+            document.getElementById('navLinksDashboard').style.display = 'none'; 
+            document.getElementById('heroAuthBtns').style.display = 'flex'; 
+
+            document.getElementById('navAuthBtns').innerHTML = `
+                <button class="btn btn-outline" onclick="openModal('login')">Masuk</button>
+                <button class="btn" onclick="openModal('register')">Daftar</button>
+            `;
+            
+            switchView('landing');
+            showToast("Berhasil keluar.", "success");
+            currentUserProfile = null;
+        }
+    </script>
 </body>
 </html>
