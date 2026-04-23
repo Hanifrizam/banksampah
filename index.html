@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Cosmic Defender V12 - Perfect Sync</title>
+  <title>Cosmic Defender V13 - The Masterpiece Update</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -104,9 +104,16 @@
     }
 
     /* IN-GAME CHAT UI */
+    #chatContainer {
+      position: absolute; top: 75px; left: 10px; z-index: 25; display: flex; flex-direction: column; pointer-events: none;
+    }
+    .chat-btn-toggle {
+      pointer-events: auto; background: rgba(0,240,255,0.2); border: 1px solid #00f0ff; color: #00f0ff; 
+      font-family: monospace; font-size: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer; 
+      margin-bottom: 5px; width: max-content; font-weight: bold; backdrop-filter: blur(2px);
+    }
     #chatBox {
-      position: absolute; top: 75px; left: 10px; width: 250px; z-index: 25; pointer-events: none;
-      display: flex; flex-direction: column;
+      display: flex; flex-direction: column; pointer-events: none; width: 250px;
     }
     #chatLog {
       max-height: 120px; overflow-y: hidden; display: flex; flex-direction: column; justify-content: flex-end;
@@ -161,9 +168,12 @@
     <span class="hud-txt" id="hudLives" style="color:#ff8844; font-size:20px;">▲ x3</span>
   </div>
 
-  <div id="chatBox" class="hidden">
-    <div id="chatLog"></div>
-    <input type="text" id="chatInput" placeholder="Ketik lalu Enter..." maxlength="40">
+  <div id="chatContainer" class="hidden">
+    <div class="chat-btn-toggle" id="btnToggleChat" onclick="toggleChat()">[ - ] HIDE CHAT</div>
+    <div id="chatBox">
+      <div id="chatLog"></div>
+      <input type="text" id="chatInput" placeholder="Ketik lalu Enter..." maxlength="40">
+    </div>
   </div>
   
   <div id="pad" class="hidden">
@@ -389,6 +399,13 @@ async function submitScoreToDB(finalScore) {
 // ==========================================
 // 4. CHAT SYSTEM
 // ==========================================
+let chatVisible = true;
+function toggleChat() {
+  chatVisible = !chatVisible;
+  document.getElementById('chatBox').style.display = chatVisible ? 'flex' : 'none';
+  document.getElementById('btnToggleChat').innerText = chatVisible ? '[ - ] HIDE CHAT' : '[ + ] SHOW CHAT';
+}
+
 function appendChatMessage(sender, text) {
   const log = document.getElementById('chatLog');
   const msg = document.createElement('div');
@@ -410,7 +427,7 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
 });
 
 // ==========================================
-// 5. DYNAMIC MULTIPLAYER (ABSOLUTE SYNC)
+// 5. DYNAMIC MULTIPLAYER (ABSOLUTE SYNC FIX)
 // ==========================================
 function startMatchmaking() {
   startMusic(bgmMenu);
@@ -452,12 +469,20 @@ function attemptJoinRoom() {
         amIHost = (myIndex === 0);
         player2.name = (myIndex === 0) ? users[1].name : users[0].name;
         
-        // V12 FIX: Host men-trigger hitung mundur untuk DIRI SENDIRI dan CLIENT
+        // V13 FIX BUG 10: Host secara lokal memicu timer, lalu mem-broadcast agar Client ikut menghitung mundur!
         if (amIHost && !isSyncingStart) {
           isSyncingStart = true;
-          setTimeout(() => {
-            broadcastAction('start_countdown', {}); // Beritahu Client
-            triggerMultiplayerCountdown(); // Eksekusi secara lokal untuk Host
+          let c = 3;
+          let iv = setInterval(() => {
+            if(c > 0) {
+              broadcastAction('countdown', {count: c});
+              handleNetworkAction('countdown', {count: c}); // Eksekusi lokal (host)
+              c--;
+            } else {
+              clearInterval(iv);
+              broadcastAction('start_game', {});
+              handleNetworkAction('start_game', {}); // Eksekusi lokal (host)
+            }
           }, 1000);
         }
       } else {
@@ -475,28 +500,6 @@ function attemptJoinRoom() {
     });
 }
 
-function triggerMultiplayerCountdown() {
-  isSyncingStart = true;
-  document.getElementById('btnAbortLobby').style.display = 'none'; 
-  document.getElementById('lobbySpinner').style.display = 'none';
-  
-  let count = 3; playSFX(400, 0.1, 0.2);
-  document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:24px; color:#00f0ff;">SYNCING PILOTS... ${count}</span>`;
-  
-  let iv = setInterval(() => {
-    count--;
-    if (count > 0) {
-      playSFX(400, 0.1, 0.2);
-      document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:24px; color:#00f0ff;">SYNCING PILOTS... ${count}</span>`;
-    } else {
-      clearInterval(iv);
-      playSFX(800, 0.2, 0.5);
-      document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:28px; color:#44ffaa;">LAUNCHING!</span>`;
-      setTimeout(() => startGame('multi'), 500);
-    }
-  }, 1000);
-}
-
 function leaveLobby() {
   if(roomChannel) supabaseClient.removeChannel(roomChannel);
   togglePanel('panelMenu');
@@ -509,8 +512,17 @@ function broadcastAction(action, data) {
 }
 
 function handleNetworkAction(action, data) {
-  if (action === 'start_countdown') {
-    if (!isSyncingStart) triggerMultiplayerCountdown();
+  if (action === 'countdown') {
+    isSyncingStart = true;
+    document.getElementById('btnAbortLobby').style.display = 'none'; 
+    document.getElementById('lobbySpinner').style.display = 'none';
+    document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:24px; color:#00f0ff;">SYNCING PILOTS... ${data.count}</span>`;
+    playSFX(400, 0.1, 0.2);
+  }
+  else if (action === 'start_game') {
+    document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:28px; color:#44ffaa;">LAUNCHING!</span>`;
+    playSFX(800, 0.2, 0.5);
+    setTimeout(() => startGame('multi'), 500); // Mulai persis berbarengan!
   }
   else if (action === 'move') { player2.targetX = data.x; player2.active = true; } 
   else if (action === 'shoot') {
@@ -568,11 +580,11 @@ function handleNetworkAction(action, data) {
 // 6. GAME ENGINE
 // ==========================================
 function startGame(mode) {
-  isSyncingStart = false; // Reset flag saat game dimulai
+  isSyncingStart = false;
   gameMode = mode; togglePanel(null);
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('pad').classList.remove('hidden');
-  document.getElementById('chatBox').classList.remove('hidden');
+  document.getElementById('chatContainer').classList.remove('hidden');
   
   startMusic(bgmGame); 
   
@@ -604,16 +616,21 @@ function quitGame() {
   if(roomChannel) supabaseClient.removeChannel(roomChannel);
   document.getElementById('hud').classList.add('hidden');
   document.getElementById('pad').classList.add('hidden');
-  document.getElementById('chatBox').classList.add('hidden');
+  document.getElementById('chatContainer').classList.add('hidden');
   startMusic(bgmMenu); togglePanel('panelMenu');
 }
 
 function executeGameOverLogic() {
-  if (state === 'gameover') return; 
+  if (state === 'gameover' || state === 'loading_menu') return; 
   state = 'gameover'; bgmGame.pause();
   spawnParts(player.x,player.y,'#ff4466',50, true); playSFX(100, 0.5, 1);
   submitScoreToDB(score); 
-  setTimeout(() => { quitGame(); }, 4000);
+  
+  // V13: Layar Game Over ditahan 4 detik, lalu animasi transisi loading 2 detik
+  setTimeout(() => { 
+    state = 'loading_menu'; 
+    setTimeout(() => quitGame(), 2000); 
+  }, 4000);
 }
 
 // --- Spawners ---
@@ -648,7 +665,7 @@ function applyPowerupEffect(type, isMe) {
   }
 }
 
-const EC=['#ff4466','#ff6600','#aa44ff','#44ffaa','#ffcc00'];
+const EC=['#ff4466','#ff6600','#aa44ff','#44ffaa','#ffcc00', '#00f0ff', '#ff00ff', '#ffffff', '#ffff00', '#88ff00'];
 function spawnEnemies(){
   enemies.length=0; eBullets.length=0;
   const rows = Math.min(2 + Math.floor(level/2), 6);
@@ -657,8 +674,10 @@ function spawnEnemies(){
   const startX = W/2 - ((cols-1)*gap)/2;
   
   for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
-    let type = Math.floor(Math.random() * Math.min(3, 1 + Math.floor(level/3)));
-    let hp = (level > 4 ? 2 : 1) + (type === 1 ? 2 : 0);
+    // V13: 10 Tipe Musuh yang sangat bervariasi!
+    let type = Math.floor(Math.random() * Math.min(10, 1 + Math.floor(level/2)));
+    let hp = (level > 4 ? 2 : 1);
+    if (type === 1 || type === 5 || type === 8) hp += 2; // Tipe tebal/Heavy/Shield
     
     enemies.push({
       id: `${r}_${c}_${level}`, 
@@ -670,7 +689,8 @@ function spawnEnemies(){
 
 function spawnBoss(forceType = -1){
   bossActive=true;
-  let bType = forceType !== -1 ? forceType : Math.floor(Math.random() * 3);
+  // V13: 10 Tipe Boss Bervariasi
+  let bType = forceType !== -1 ? forceType : Math.floor(Math.random() * Math.min(10, 1 + Math.floor(level/3)));
   boss={x:W/2, y:-100, hp:30+level*5, maxHp:30+level*5, dx:2.5, dir:1, t:0, st:0, type: bType};
 }
 
@@ -680,11 +700,12 @@ function update() {
   if(state === 'auth' || state === 'menu' || state === 'lobby' || state === 'paused') return;
 
   stars.forEach(s => {
-    s.y += s.spd * (state==='intro' || state==='resuming' ? 4 : 1); 
+    s.y += s.spd * (state==='intro' || state==='resuming' || state==='loading_menu' ? 4 : 1); 
     if(s.y>H){ s.y=0; s.x=Math.random()*W; }
   });
 
   if(state === 'resuming') { resumeTimer--; if(resumeTimer <= 0) state = 'playing'; return; }
+  if(state === 'loading_menu') { updateParticles(); return; }
 
   if(state === 'intro') {
     player.y -= 4; 
@@ -707,7 +728,7 @@ function update() {
     if(levelClearT >= 100 && (gameMode === 'solo' || amIHost)) {
       player.y = H-160; level++;
       let isBoss = (level%5===0);
-      let bType = Math.floor(Math.random() * 3);
+      let bType = Math.floor(Math.random() * Math.min(10, 1 + Math.floor(level/3)));
       if(isBoss) spawnBoss(bType); else spawnEnemies();
       state='playing'; levelClearT=0; showAlert(`SECTOR ${level} REACHED`, false);
       if(gameMode === 'multi') broadcastAction('start_level', { level: level, isBoss: isBoss, bType: bType });
@@ -780,21 +801,51 @@ function update() {
     }
   }
 
-  // Shooting Normal
+  // V13: EVOLUSI TEMBAKAN PESAWAT HINGGA LEVEL 10
   if(shotCD <= 0) {
-    let bCol = level >= 5 ? '#ffaa00' : '#00f0ff';
+    let bCol = level >= 10 ? '#ffffff' : (level >= 7 ? '#ffff00' : (level >= 5 ? '#ffaa00' : '#00f0ff'));
     let localBullets = [];
-    if(level < 3) localBullets.push({x: 0, y: -20, vy: -12, vx: 0, col: bCol});
-    else if (level < 5) {
-      localBullets.push({x: -8, y: -20, vy: -12, vx: 0, col: bCol}); localBullets.push({x: 8, y: -20, vy: -12, vx: 0, col: bCol});
-    } else {
-      localBullets.push({x: 0, y: -25, vy: -13, vx: 0, col: bCol});
-      localBullets.push({x: -15, y: -15, vy: -11, vx: -1, col: '#ff4466'}); localBullets.push({x: 15, y: -15, vy: -11, vx: 1, col: '#ff4466'});
+    let spdY = -12 - (level * 0.2); // Peluru makin cepat seiring level
+    
+    if (level === 1 || level === 2) {
+       localBullets.push({x: 0, y: -20, vy: spdY, vx: 0, col: bCol});
+    } else if (level === 3) {
+       localBullets.push({x: -8, y: -20, vy: spdY, vx: 0, col: bCol});
+       localBullets.push({x: 8, y: -20, vy: spdY, vx: 0, col: bCol});
+    } else if (level === 4) {
+       localBullets.push({x: -10, y: -20, vy: spdY, vx: -0.5, col: bCol});
+       localBullets.push({x: 10, y: -20, vy: spdY, vx: 0.5, col: bCol});
+    } else if (level === 5 || level === 6) {
+       localBullets.push({x: 0, y: -25, vy: spdY, vx: 0, col: bCol});
+       localBullets.push({x: -15, y: -15, vy: spdY+1, vx: -1, col: '#ff4466'});
+       localBullets.push({x: 15, y: -15, vy: spdY+1, vx: 1, col: '#ff4466'});
+    } else if (level === 7 || level === 8) {
+       localBullets.push({x: -5, y: -25, vy: spdY, vx: 0, col: bCol});
+       localBullets.push({x: 5, y: -25, vy: spdY, vx: 0, col: bCol});
+       localBullets.push({x: -20, y: -15, vy: spdY+1, vx: -1.5, col: '#ff4466'});
+       localBullets.push({x: 20, y: -15, vy: spdY+1, vx: 1.5, col: '#ff4466'});
+       if (level === 8) localBullets.push({x: 0, y: -30, vy: spdY, vx: 0, col: '#44ffaa'});
+    } else if (level === 9) {
+       localBullets.push({x: 0, y: -30, vy: spdY, vx: 0, col: '#44ffaa'});
+       localBullets.push({x: -10, y: -20, vy: spdY, vx: -0.5, col: bCol});
+       localBullets.push({x: 10, y: -20, vy: spdY, vx: 0.5, col: bCol});
+       localBullets.push({x: -20, y: -15, vy: spdY+1, vx: -2, col: '#ff4466'});
+       localBullets.push({x: 20, y: -15, vy: spdY+1, vx: 2, col: '#ff4466'});
+    } else { // LEVEL 10+ (Ultimate Spread)
+       localBullets.push({x: 0, y: -30, vy: spdY, vx: 0, col: '#fff'});
+       localBullets.push({x: -8, y: -25, vy: spdY, vx: -0.5, col: '#00f0ff'});
+       localBullets.push({x: 8, y: -25, vy: spdY, vx: 0.5, col: '#00f0ff'});
+       localBullets.push({x: -16, y: -20, vy: spdY+1, vx: -1.5, col: '#ffaa00'});
+       localBullets.push({x: 16, y: -20, vy: spdY+1, vx: 1.5, col: '#ffaa00'});
+       localBullets.push({x: -24, y: -15, vy: spdY+2, vx: -3, col: '#ff4466'});
+       localBullets.push({x: 24, y: -15, vy: spdY+2, vx: 3, col: '#ff4466'});
     }
 
     localBullets.forEach(b => bullets.push({x: player.x + b.x, y: player.y + b.y, vy: b.vy, vx: b.vx, col: b.col}));
     broadcastAction('shoot', { bData: localBullets }); 
-    shotCD = 10; playSFX(800, 0.05, 0.05);
+    // Cooldown tembakan makin cepat seiring level
+    shotCD = Math.max(4, 10 - Math.floor(level/2)); 
+    playSFX(800 + (level*10), 0.05, 0.05);
   }
   if(shotCD>0) shotCD--;
 
@@ -803,14 +854,24 @@ function update() {
   if(player.invincible>0) player.invincible--;
 
   if(!bossActive) {
-    let spd = Math.min(2.5, 1 + level * 0.1); 
+    let spd = Math.min(3.5, 1 + level * 0.15); 
     let edge = false;
     enemies.forEach(e => {
       if(e.y < e.targetY) e.y += 2;
       else { 
-        let moveSpd = e.type === 2 ? spd * 1.5 : (e.type === 1 ? spd * 0.7 : spd);
+        // V13: Pola Gerakan 10 Tipe Musuh
+        let moveSpd = spd;
+        if (e.type===1) moveSpd = spd*0.6; 
+        else if (e.type===2) moveSpd = spd*1.5; 
+        else if (e.type===3) { moveSpd = spd*1.2; e.y += Math.sin(frame*0.1)*2; } 
+        else if (e.type===4) { moveSpd = spd*0.8; } 
+        else if (e.type===5) { moveSpd = spd*0.5; } 
+        else if (e.type===6) { moveSpd = spd*1.8; } 
+        else if (e.type===7) { moveSpd = spd; if(Math.random()<0.01) e.y += 10; } 
+        else if (e.type===8) { moveSpd = spd*0.7; } 
+        else if (e.type===9) { moveSpd = spd*2.0; if(frame%60===0) e.dir*=-1; }
+
         e.x += moveSpd * e.dir; e.t += 0.08; 
-        
         if((e.x > W-25 && e.dir > 0) || (e.x < 25 && e.dir < 0)) edge = true; 
       }
     });
@@ -837,21 +898,12 @@ function update() {
     }
   } else if (boss) {
     boss.t += 0.04; 
-    
-    if (boss.type === 0) { 
-      boss.x += boss.dx * boss.dir;
-      if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
-      boss.y = 80 + Math.sin(boss.t)*30; 
-    } else if (boss.type === 1) { 
-      boss.x += boss.dx * 1.2 * boss.dir;
-      if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
-      boss.y = 80 + Math.sin(boss.t * 2)*60; 
-    } else if (boss.type === 2) { 
-      boss.x += boss.dx * boss.dir;
-      if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
-      if(frame % 90 === 0) boss.dir *= -1; 
-      boss.y = 80 + Math.cos(boss.t)*20; 
-    }
+    // V13: Pola Gerakan 10 Tipe Bos
+    if (boss.type === 0 || boss.type === 5) { boss.x += boss.dx * boss.dir; if(boss.x > W-70 || boss.x < 70) boss.dir *= -1; boss.y = 80 + Math.sin(boss.t)*30; } 
+    else if (boss.type === 1 || boss.type === 6) { boss.x += boss.dx * 1.2 * boss.dir; if(boss.x > W-70 || boss.x < 70) boss.dir *= -1; boss.y = 80 + Math.sin(boss.t * 2)*60; } 
+    else if (boss.type === 2 || boss.type === 7) { boss.x += boss.dx * boss.dir; if(boss.x > W-70 || boss.x < 70) boss.dir *= -1; if(frame % 90 === 0) boss.dir *= -1; boss.y = 80 + Math.cos(boss.t)*20; }
+    else if (boss.type === 3 || boss.type === 8) { boss.x = W/2 + Math.sin(boss.t)*100; boss.y = 100 + Math.cos(boss.t*2)*50; } // Figure 8 Pattern
+    else if (boss.type === 4 || boss.type === 9) { boss.x += boss.dx * 2 * boss.dir; if(boss.x > W-70 || boss.x < 70) boss.dir *= -1; boss.y = 50 + (frame%200 < 20 ? 100 : 0); } // Teleport/Stomp
 
     if (gameMode === 'solo' || amIHost) {
       boss.st++;
@@ -944,8 +996,8 @@ function draw() {
 
   if(state === 'auth' || state === 'menu' || state === 'lobby') return;
 
-  if (laserTimer > 0 && state !== 'gameover') drawLaser(player.x, player.y, `rgba(0, 240, 255, ${Math.random()*0.4+0.4})`, '#00f0ff');
-  if (p2LaserTimer > 0 && player2.active && state !== 'gameover') drawLaser(player2.x, player2.y, `rgba(68, 255, 170, ${Math.random()*0.4+0.4})`, '#44ffaa');
+  if (laserTimer > 0 && state !== 'gameover' && state !== 'loading_menu') drawLaser(player.x, player.y, `rgba(0, 240, 255, ${Math.random()*0.4+0.4})`, '#00f0ff');
+  if (p2LaserTimer > 0 && player2.active && state !== 'gameover' && state !== 'loading_menu') drawLaser(player2.x, player2.y, `rgba(68, 255, 170, ${Math.random()*0.4+0.4})`, '#44ffaa');
 
   ctx.lineWidth = 2;
   shockwaves.forEach(sw => {
@@ -985,20 +1037,35 @@ function draw() {
       let s = 0.9 + Math.sin(e.t)*0.1; ctx.scale(s, s);
       ctx.shadowColor = e.color; ctx.shadowBlur = 10; ctx.strokeStyle = e.color; ctx.fillStyle = e.color+'33';
       ctx.beginPath(); 
-      if (e.type === 1) { ctx.rect(-12, -12, 24, 24); } 
-      else if (e.type === 2) { ctx.moveTo(0, 15); ctx.lineTo(-12, -10); ctx.lineTo(12, -10); ctx.closePath(); } 
+      // V13: Gambar Visual 10 Tipe Musuh
+      if (e.type === 1 || e.type === 5) { ctx.rect(-12, -12, 24, 24); } 
+      else if (e.type === 2 || e.type === 6) { ctx.moveTo(0, 15); ctx.lineTo(-12, -10); ctx.lineTo(12, -10); ctx.closePath(); } 
+      else if (e.type === 3 || e.type === 7) { ctx.moveTo(0, 12); ctx.lineTo(-15, 0); ctx.lineTo(0, -12); ctx.lineTo(15, 0); ctx.closePath(); } // Diamond
+      else if (e.type === 4 || e.type === 8) { ctx.arc(0,0, 12, 0, Math.PI*2); } // Bulat Penuh
+      else if (e.type === 9) { ctx.moveTo(-10,-10); ctx.lineTo(10,10); ctx.moveTo(10,-10); ctx.lineTo(-10,10); } // Cross
       else { ctx.moveTo(0,-12); ctx.lineTo(-12,-4); ctx.lineTo(-15,8); ctx.lineTo(-6,12); ctx.lineTo(6,12); ctx.lineTo(15,8); ctx.lineTo(12,-4); ctx.closePath(); } 
       ctx.fill(); ctx.stroke();
       ctx.fillStyle = e.color; 
-      if (e.type === 1) { ctx.fillRect(-4, -4, 8, 8); } else { ctx.beginPath(); ctx.arc(-6,3,3,0,6.28); ctx.fill(); ctx.beginPath(); ctx.arc(6,3,3,0,6.28); ctx.fill(); }
+      if (e.type === 1 || e.type === 5) { ctx.fillRect(-4, -4, 8, 8); } 
+      else if (e.type === 4 || e.type === 8) { ctx.arc(0,0, 4, 0, Math.PI*2); ctx.fill(); }
+      else { ctx.beginPath(); ctx.arc(-6,3,3,0,6.28); ctx.fill(); ctx.beginPath(); ctx.arc(6,3,3,0,6.28); ctx.fill(); }
       ctx.restore();
     });
   } else if(boss) {
     ctx.save(); ctx.translate(boss.x, boss.y);
     let s = 0.95 + Math.sin(boss.t*2)*0.05; ctx.scale(s, s);
-    let bCol = boss.type === 1 ? '#ff8800' : (boss.type === 2 ? '#aa44ff' : '#ff4466');
+    let bCol = EC[boss.type % EC.length]; // Warna bos sesuai tipenya
     ctx.shadowColor=bCol; ctx.shadowBlur=25; ctx.strokeStyle=bCol; ctx.fillStyle='#220011'; ctx.lineWidth=3;
-    ctx.beginPath(); ctx.moveTo(0,-35); ctx.lineTo(-45,-15); ctx.lineTo(-50,25); ctx.lineTo(-25,35); ctx.lineTo(25,35); ctx.lineTo(50,25); ctx.lineTo(45,-15); ctx.closePath();
+    
+    // Variasi Bentuk Boss
+    ctx.beginPath(); 
+    if (boss.type === 1 || boss.type === 6) {
+      ctx.arc(0,0, 40, 0, Math.PI*2);
+    } else if (boss.type === 2 || boss.type === 7) {
+      ctx.moveTo(0, -40); ctx.lineTo(-40, 0); ctx.lineTo(0, 40); ctx.lineTo(40, 0); ctx.closePath();
+    } else {
+      ctx.moveTo(0,-35); ctx.lineTo(-45,-15); ctx.lineTo(-50,25); ctx.lineTo(-25,35); ctx.lineTo(25,35); ctx.lineTo(50,25); ctx.lineTo(45,-15); ctx.closePath();
+    }
     ctx.fill(); ctx.stroke();
     
     let hr = Math.max(0, boss.hp/boss.maxHp);
@@ -1007,7 +1074,7 @@ function draw() {
     ctx.restore();
   }
 
-  if(player2.active) {
+  if(player2.active && state !== 'gameover' && state !== 'loading_menu') {
     let sx2 = player2.shake > 0 ? (Math.random()-.5) * player2.shake : 0;
     let sy2 = player2.shake > 0 ? (Math.random()-.5) * player2.shake * 0.5 : 0;
     if (player2.shake > 0) player2.shake--;
@@ -1015,7 +1082,7 @@ function draw() {
     if(player2.invincible > 0) player2.invincible--;
   }
 
-  if(state !== 'gameover') {
+  if(state !== 'gameover' && state !== 'loading_menu') {
     let sx = player.shake > 0 ? (Math.random()-.5) * player.shake : 0;
     let sy = player.shake > 0 ? (Math.random()-.5) * player.shake * 0.5 : 0;
     if (player.shake > 0) player.shake--;
@@ -1032,6 +1099,20 @@ function draw() {
     ctx.shadowBlur = 0; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
 
+  // V13: ANIMASI LOADING GAME OVER MENUJU LOBI
+  if(state === 'loading_menu') {
+    ctx.fillStyle = '#050505'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 24px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 15;
+    ctx.fillText("RETURNING TO BASE...", W/2, H/2);
+    
+    ctx.beginPath();
+    ctx.arc(W/2, H/2 + 50, 20, (frame*0.1)%Math.PI*2, (frame*0.1)%Math.PI*2 + Math.PI);
+    ctx.strokeStyle = '#44ffaa'; ctx.lineWidth = 4; ctx.shadowColor = '#44ffaa'; ctx.stroke();
+    
+    ctx.shadowBlur = 0; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
   if(state === 'resuming') {
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1043,12 +1124,22 @@ function draw() {
   updateHUD();
 }
 
+// V13: PESAWAT EVOLUSI SAMPAI LEVEL 10
 function drawShip(x, y, inv, isP2, name) {
   if(inv && Math.floor(frame/4)%2===0) return;
   ctx.save(); ctx.translate(x, y);
   
-  let coreCol = isP2 ? '#44ffaa' : (level >= 5 ? '#ffaa00' : '#00f0ff');
-  let wingCol = isP2 ? '#004422' : (level >= 5 ? '#ff4466' : '#002244');
+  let coreCol = isP2 ? '#44ffaa' : (level >= 10 ? '#ffffff' : (level >= 7 ? '#ffff00' : (level >= 5 ? '#ffaa00' : '#00f0ff')));
+  let wingCol = isP2 ? '#004422' : (level >= 10 ? '#ffaa00' : (level >= 7 ? '#aa44ff' : (level >= 5 ? '#ff4466' : '#002244')));
+
+  // Level 7+: Shield Aura
+  if (level >= 7) {
+    ctx.beginPath();
+    ctx.arc(0, 0, 30 + (level*0.5), 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(0, 240, 255, ${0.2 + Math.sin(frame*0.1)*0.2})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
 
   ctx.shadowColor = coreCol; ctx.shadowBlur = 15;
   ctx.strokeStyle = coreCol; ctx.lineWidth = 2; ctx.fillStyle = wingCol;
@@ -1069,9 +1160,16 @@ function drawShip(x, y, inv, isP2, name) {
   }
 
   ctx.fillStyle = coreCol; ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,4); ctx.lineTo(5,4); ctx.closePath(); ctx.fill();
+  
+  // Level 9+: Dual Engine Flames
   const fl = 0.6 + Math.sin(frame*0.5)*0.4;
   ctx.shadowColor = '#ff8800'; ctx.strokeStyle = `rgba(255,160,0,${fl})`; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(-6,12); ctx.lineTo(-4,12+fl*15); ctx.lineTo(0,12); ctx.moveTo(0,12); ctx.lineTo(4,12+fl*15); ctx.lineTo(6,12); ctx.stroke();
+  if (level >= 9) {
+    ctx.beginPath(); ctx.moveTo(-8,14); ctx.lineTo(-6,14+fl*15); ctx.lineTo(-2,14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2,14); ctx.lineTo(6,14+fl*15); ctx.lineTo(8,14); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.moveTo(-6,12); ctx.lineTo(-4,12+fl*15); ctx.lineTo(0,12); ctx.moveTo(0,12); ctx.lineTo(4,12+fl*15); ctx.lineTo(6,12); ctx.stroke();
+  }
 
   ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
   ctx.fillText(name, 0, 35);
