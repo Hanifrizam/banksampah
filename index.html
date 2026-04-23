@@ -614,7 +614,7 @@ function spawnParts(x, y, col, n=15, isBig=false){
 }
 
 function spawnPowerUpDrop(x, y) {
-  if (Math.random() > 0.15) return; // 15% Chance
+  if (Math.random() > 0.05) return; // 15% Chance
   let pType = Math.random() < 0.5 ? 'laser' : 'life';
   let p = { id: Date.now() + Math.random(), x: x, y: y, type: pType, vy: 2 };
   powerups.push(p);
