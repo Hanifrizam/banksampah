@@ -1,19 +1,144 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Cosmic Defender</title>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent; /* Hilangkan efek blok biru saat disentuh di HP */
+    }
 
-<style>
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-#gw{background:#000010;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;align-items:center;width:100%;touch-action:none;user-select:none;}
-#gameCanvas{display:block;width:100%;max-width:660px;height:auto;image-rendering:pixelated;}
-#hud{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:660px;padding:6px 12px;background:#000028;}
-.hud-txt{font-family:monospace;font-size:13px;}
-#pad{width:100%;max-width:660px;display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;gap:0;padding:10px 14px;background:#000018;}
-.pad-side{display:flex;gap:10px;}
-.pad-center{display:flex;justify-content:center;}
-.btn{background:rgba(255,255,255,0.08);border:1.5px solid rgba(255,255,255,0.2);color:#fff;border-radius:50%;width:58px;height:58px;font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:background 0.1s;}
-.btn:active,.btn.pressed{background:rgba(255,255,255,0.28);border-color:rgba(255,255,255,0.5);}
-#btnFire{background:rgba(255,60,60,0.18);border-color:rgba(255,80,80,0.5);width:70px;height:70px;font-size:13px;font-family:monospace;font-weight:bold;border-radius:14px;letter-spacing:1px;}
-#btnFire.pressed{background:rgba(255,80,80,0.4);}
-#btnUp{display:none;}
-</style>
+    body {
+      background: #050505; /* Latar belakang gelap untuk area luar game */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh; /* Pastikan game selalu di tengah layar */
+      overflow: hidden; /* Cegah scrolling yang tidak disengaja */
+    }
+
+    #gw {
+      background: #000010;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100vw;
+      max-width: 660px; /* Batas maksimal ukuran desktop */
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.1);
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 660 / 430; /* Kunci proporsi asli game agar tidak penyok */
+      image-rendering: pixelated;
+    }
+
+    #hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding: 8px 16px;
+      background: #000028;
+    }
+
+    .hud-txt {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    #pad {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      align-items: center;
+      gap: 0;
+      padding: 12px 16px;
+      background: #000018;
+    }
+
+    .pad-side {
+      display: flex;
+      gap: 12px;
+    }
+
+    .pad-center {
+      display: flex;
+      justify-content: center;
+    }
+
+    .pad-center-text {
+      color: rgba(255,255,255,0.3);
+      font-size: 11px;
+      font-family: monospace;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    .btn {
+      background: rgba(255,255,255,0.08);
+      border: 1.5px solid rgba(255,255,255,0.2);
+      color: #fff;
+      border-radius: 50%;
+      width: 58px;
+      height: 58px;
+      font-size: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: background 0.1s;
+    }
+
+    .btn:active, .btn.pressed {
+      background: rgba(255,255,255,0.28);
+      border-color: rgba(255,255,255,0.5);
+    }
+
+    #btnFire {
+      background: rgba(255,60,60,0.18);
+      border-color: rgba(255,80,80,0.5);
+      width: 70px;
+      height: 70px;
+      font-size: 13px;
+      font-family: monospace;
+      font-weight: bold;
+      border-radius: 14px;
+      letter-spacing: 1px;
+    }
+
+    #btnFire.pressed {
+      background: rgba(255,80,80,0.4);
+    }
+
+    /* Penyesuaian khusus untuk layar HP yang sangat kecil */
+    @media (max-width: 400px) {
+      .btn { width: 48px; height: 48px; font-size: 18px; }
+      .pad-side { gap: 8px; }
+      #btnFire { width: 60px; height: 60px; font-size: 11px; }
+      .pad-center-text { font-size: 9px; }
+      #pad { padding: 10px 12px; }
+      .hud-txt { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
 
 <div id="gw">
   <canvas id="gameCanvas" width="660" height="430"></canvas>
@@ -28,7 +153,7 @@
       <div class="btn" id="btnRight">&#9654;</div>
     </div>
     <div class="pad-center">
-      <div style="color:rgba(255,255,255,0.3);font-size:11px;font-family:monospace;text-align:center;line-height:1.4;">Arrow keys<br>+ Space</div>
+      <div class="pad-center-text">Arrow keys<br>+ Space</div>
     </div>
     <div style="display:flex;justify-content:flex-end;">
       <div class="btn" id="btnFire">FIRE</div>
@@ -37,6 +162,7 @@
 </div>
 
 <script>
+// Seluruh logic JavaScript kamu tidak perlu diubah, tetap gunakan kode yang sama.
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const W = 660, H = 430;
@@ -342,3 +468,5 @@ initStars();
 function loop(){update();draw();requestAnimationFrame(loop);}
 loop();
 </script>
+</body>
+</html>
