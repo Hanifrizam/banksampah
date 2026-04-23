@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Cosmic Defender V6 - Ultimate Sync</title>
+  <title>Cosmic Defender V7 - The Ultimate Edition</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -59,6 +59,8 @@
     .menu-btn.multi:hover, .menu-btn.multi:active { background: #ffaa00; color: #000; box-shadow: 0 0 20px #ffaa00; }
     .menu-btn.danger { border-color: #ff4466; color: #ff4466; }
     .menu-btn.danger:hover { background: #ff4466; color: #000; box-shadow: 0 0 20px #ff4466; }
+    .menu-btn.gold { border-color: #ffd700; color: #ffd700; box-shadow: 0 0 10px rgba(255, 215, 0, 0.2) inset; }
+    .menu-btn.gold:hover, .menu-btn.gold:active { background: #ffd700; color: #000; box-shadow: 0 0 20px #ffd700; }
 
     .neon-input {
       background: transparent; border: 2px solid #00f0ff; color: #00f0ff;
@@ -101,7 +103,32 @@
       box-shadow: 0 0 15px rgba(0, 240, 255, 0.4) inset; transform: scale(0.95);
     }
 
-    /* CUSTOM ALERTS & LOBBY */
+    /* IN-GAME CHAT UI */
+    #chatBox {
+      position: absolute; top: 75px; left: 10px; width: 250px; z-index: 25; pointer-events: none;
+      display: flex; flex-direction: column;
+    }
+    #chatLog {
+      max-height: 120px; overflow-y: hidden; display: flex; flex-direction: column; justify-content: flex-end;
+      font-size: 12px; text-shadow: 0 0 3px #000; margin-bottom: 5px; pointer-events: none;
+    }
+    .chat-msg {
+      background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 4px; margin-bottom: 2px;
+      color: #fff; word-wrap: break-word; transition: opacity 0.5s; border-left: 2px solid #00f0ff;
+    }
+    #chatInput {
+      pointer-events: auto; background: rgba(0,0,30,0.6); border: 1px solid rgba(0,240,255,0.5);
+      color: #fff; font-family: monospace; font-size: 12px; padding: 6px 10px; border-radius: 4px;
+      outline: none; width: 100%; backdrop-filter: blur(2px);
+    }
+    #chatInput:focus { border-color: #00f0ff; background: rgba(0,0,40,0.8); }
+
+    /* LEADERBOARD TABLE */
+    .lb-table { width: 100%; text-align: left; border-collapse: collapse; margin-top: 10px; }
+    .lb-table th { color: #ffd700; border-bottom: 1px solid rgba(255,215,0,0.5); padding: 8px 0; }
+    .lb-table td { color: #fff; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+
+    /* CUSTOM ALERTS */
     #customAlert {
       position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
       background: rgba(255, 68, 102, 0.9); color: white; padding: 10px 25px;
@@ -133,6 +160,11 @@
     <span class="hud-txt" id="hudLv" style="color:#ffff00;">LV 1</span>
     <span class="hud-txt" id="hudLives" style="color:#ff8844; font-size:20px;">▲ x3</span>
   </div>
+
+  <div id="chatBox" class="hidden">
+    <div id="chatLog"></div>
+    <input type="text" id="chatInput" placeholder="Ketik lalu Enter..." maxlength="40">
+  </div>
   
   <div id="pad" class="hidden">
     <div class="btn-steer" id="btnLeft">◀</div>
@@ -150,16 +182,25 @@
     <div class="title-sub">DEFENDER</div>
     <div id="welcomeText" style="color:#fff; margin-bottom:15px; font-weight:bold;">Welcome, Pilot</div>
     <button class="menu-btn" onclick="startGame('solo')">SOLO START</button>
-    <button class="menu-btn multi" onclick="joinLobby()">ONLINE MULTIPLAYER</button>
+    <button class="menu-btn multi" onclick="startMatchmaking()">ONLINE MULTIPLAYER</button>
+    <button class="menu-btn gold" onclick="fetchLeaderboard()">LEADERBOARD</button>
     <button class="menu-btn" style="border-color:#44ffaa; color:#44ffaa;" onclick="togglePanel('panelSettings')">UI SETTINGS</button>
   </div>
 
   <div id="panelLobby" class="overlay-panel hidden">
-    <h2 style="color:#ffaa00; margin-bottom:20px;">MATCHMAKING LOBBY</h2>
+    <h2 style="color:#ffaa00; margin-bottom:20px;">WARP GATE HUB</h2>
     <div class="spinner"></div>
-    <div id="lobbyPlayers" style="margin-bottom: 20px; color: #fff; line-height: 2;"></div>
-    <p id="lobbyStatus" style="color:#44ffaa; font-weight:bold; margin-bottom:15px;">Mencari sinyal player 2...</p>
+    <div id="lobbyPlayers" style="margin-bottom: 20px; color: #fff; line-height: 2; font-size:18px;"></div>
+    <p id="lobbyStatus" style="color:#44ffaa; font-weight:bold; margin-bottom:15px;">Mencari sektor kosong...</p>
     <button class="menu-btn danger" onclick="leaveLobby()">ABORT</button>
+  </div>
+
+  <div id="panelLeaderboard" class="overlay-panel hidden">
+    <h2 style="color:#ffd700; margin-bottom:10px; text-shadow: 0 0 15px #ffd700;">HALL OF FAME</h2>
+    <p style="color:#aaa; font-size:12px; margin-bottom:20px;">Top 10 Galactic Defenders</p>
+    <div id="lbContent" style="width: 300px; max-height: 300px; overflow-y:auto; margin-bottom: 20px;">
+      </div>
+    <button class="menu-btn" onclick="togglePanel('panelMenu')">BACK TO BASE</button>
   </div>
 
   <div id="panelSettings" class="overlay-panel hidden">
@@ -203,7 +244,8 @@ const SUPABASE_URL = 'https://blvfsbsgtbvnuaisglmz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_uI4hO-j7K8QWim1fVGQvSw_IrKtp1kP'; 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let roomChannel = null;
-let amIHost = false; // Sistem Host-Client
+let roomIndex = 1; // Untuk Dynamic Matchmaking
+let amIHost = false; 
 
 // AUDIO
 let audioCtx = null;
@@ -259,7 +301,7 @@ function saveName() {
   if(input.length < 3) return showAlert("Callsign min 3 karakter!");
   playerName = input.toUpperCase(); localStorage.setItem('cosmic_name', playerName);
   playSFX(600, 0.1, 0.1, 'square'); 
-  startMusic(bgmMenu); // Trigger BGM Pertama Kali
+  startMusic(bgmMenu); 
   initUI();
 }
 
@@ -267,7 +309,7 @@ function startMusic(track) {
   bgmMenu.pause(); bgmGame.pause();
   track.currentTime = 0;
   let playPromise = track.play();
-  if(playPromise !== undefined) playPromise.catch(e => console.log("Auto-play ditahan browser."));
+  if(playPromise !== undefined) playPromise.catch(e => console.log("Auto-play ditahan."));
 }
 
 function playSFX(freq, vol, dur, type='square'){
@@ -283,38 +325,124 @@ function playSFX(freq, vol, dur, type='square'){
 }
 
 // ==========================================
-// 3. MULTIPLAYER SYNC (HOST-CLIENT)
+// 3. LEADERBOARD SYSTEM (SUPABASE)
 // ==========================================
-function joinLobby() {
+async function fetchLeaderboard() {
+  togglePanel('panelLeaderboard');
+  document.getElementById('lbContent').innerHTML = '<div class="spinner" style="margin-top:20px;"></div>';
+  
+  const { data, error } = await supabaseClient
+    .from('leaderboards') // Pastikan tabel leaderboards sudah dibuat di dashboard
+    .select('*')
+    .order('score', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    document.getElementById('lbContent').innerHTML = `<p style="color:#ff4466">Offline: Tidak dapat terhubung ke server database.<br>Pesan: ${error.message}</p>`;
+    return;
+  }
+
+  let html = '<table class="lb-table"><tr><th>RANK</th><th>PILOT</th><th>SCORE</th></tr>';
+  if(data.length === 0) html += '<tr><td colspan="3" style="text-align:center;">Belum ada data</td></tr>';
+  data.forEach((row, i) => {
+    html += `<tr><td>#${i+1}</td><td>${row.name}</td><td style="color:#00f0ff">${row.score}</td></tr>`;
+  });
+  html += '</table>';
+  document.getElementById('lbContent').innerHTML = html;
+}
+
+async function submitScoreToDB(finalScore) {
+  if (finalScore <= 0) return;
+  // Fire and forget insert ke tabel leaderboards
+  await supabaseClient.from('leaderboards').insert([{ name: playerName, score: finalScore }]);
+}
+
+// ==========================================
+// 4. CHAT SYSTEM
+// ==========================================
+function appendChatMessage(sender, text) {
+  const log = document.getElementById('chatLog');
+  const msg = document.createElement('div');
+  msg.className = 'chat-msg';
+  msg.innerHTML = `<b style="color:${sender===playerName?'#00f0ff':'#44ffaa'}">${sender}:</b> ${text}`;
+  log.appendChild(msg);
+  log.scrollTop = log.scrollHeight;
+  // Fade out and remove after 5s
+  setTimeout(() => { 
+    msg.style.opacity = 0; 
+    setTimeout(() => msg.remove(), 500); 
+  }, 5000);
+}
+
+document.getElementById('chatInput').addEventListener('keydown', function(e) {
+  // Prevent character movement when typing
+  e.stopPropagation(); 
+  if(e.key === 'Enter' && this.value.trim() !== '') {
+    const text = this.value.trim();
+    appendChatMessage(playerName, text);
+    broadcastAction('chat_msg', { text: text, sender: playerName });
+    this.value = '';
+    this.blur(); // Unfocus after send
+  }
+});
+
+// ==========================================
+// 5. DYNAMIC MULTIPLAYER MATCHMAKING (BUG 2 FIX MAX PLAYER)
+// ==========================================
+function startMatchmaking() {
   startMusic(bgmMenu);
   togglePanel('panelLobby'); gameMode = 'multi';
+  roomIndex = 1;
   document.getElementById('lobbyPlayers').innerHTML = '';
+  attemptJoinRoom();
+}
 
-  roomChannel = supabaseClient.channel('global_room');
+function attemptJoinRoom() {
+  document.getElementById('lobbyStatus').innerText = `Memasuki Sektor [${roomIndex}]...`;
+  roomChannel = supabaseClient.channel(`cosmic_room_${roomIndex}`);
+  
   roomChannel
     .on('presence', { event: 'sync' }, () => {
-      const st = roomChannel.presenceState(); let users = [];
+      const st = roomChannel.presenceState(); 
+      let users = [];
       for (const id in st) { users.push(st[id][0]); }
       
-      let html = ''; users.forEach(u => html += `<div style="color:#44ffaa;">> ${u.name} [CONNECTED]</div>`);
+      // Urutkan berdasarkan waktu gabung
+      users.sort((a, b) => a.joined_at - b.joined_at);
+      let myIndex = users.findIndex(u => u.name === playerName);
+
+      // JIKA RUANGAN PENUH (Saya adalah orang ke-3 atau lebih)
+      if (users.length > 2 && myIndex >= 2) {
+        supabaseClient.removeChannel(roomChannel);
+        roomIndex++; // Pindah ke Sektor berikutnya
+        setTimeout(attemptJoinRoom, 500); // Coba masuk lagi
+        return;
+      }
+      
+      // JIKA RUANGAN AMAN (Max 2 orang tampil di UI)
+      let html = ''; 
+      users.slice(0,2).forEach(u => html += `<div style="color:#44ffaa;">> ${u.name} [READY]</div>`);
       document.getElementById('lobbyPlayers').innerHTML = html;
 
-      if (users.length === 2) {
+      // JIKA PAS 2 ORANG, MULAI GAME!
+      if (users.length === 2 && myIndex < 2) {
         document.getElementById('lobbyStatus').innerText = "LINK ESTABLISHED! STARTING...";
-        // Tentukan siapa HOST (yang join pertama)
-        amIHost = (users[0].joined_at < users[1].joined_at) ? (playerName === users[0].name) : (playerName === users[1].name);
-        player2.name = (users[0].name === playerName) ? users[1].name : users[0].name;
+        amIHost = (myIndex === 0);
+        player2.name = (myIndex === 0) ? users[1].name : users[0].name;
         
         setTimeout(() => startGame('multi'), 2000);
-      } else if (users.length > 2) document.getElementById('lobbyStatus').innerText = "Room penuh!";
-      else document.getElementById('lobbyStatus').innerText = "Mencari player ke-2...";
+      } else {
+        document.getElementById('lobbyStatus').innerText = `Menunggu player ke-2 di Sektor [${roomIndex}]...`;
+      }
     })
     .on('broadcast', { event: 'game_action' }, (response) => {
       const data = response.payload; 
       handleNetworkAction(data.action, data.data);
     })
     .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') await roomChannel.track({ name: playerName, joined_at: Date.now() });
+      if (status === 'SUBSCRIBED') {
+        await roomChannel.track({ name: playerName, joined_at: Date.now() });
+      }
     });
 }
 
@@ -332,7 +460,7 @@ function broadcastAction(action, data) {
 function handleNetworkAction(action, data) {
   if (action === 'move') {
     player2.targetX = data.x;
-    player2.active = true; // Fix Bug 1: Pastikan aktif jika menerima gerakan
+    player2.active = true;
   } else if (action === 'shoot') {
     bullets.push({x: player2.x, y: player2.y-20, vy: -10, col: '#44ffaa', isP2: true});
     playSFX(850, 0.03, 0.05); 
@@ -340,31 +468,31 @@ function handleNetworkAction(action, data) {
     state = 'paused'; togglePanel('panelPause');
   } else if (action === 'resume') {
     triggerResume(false); 
+  } else if (action === 'chat_msg') {
+    // Terima chat dari musuh/teman
+    appendChatMessage(data.sender, data.text);
+    playSFX(1200, 0.02, 0.1, 'sine');
   } else if (action === 'player_hit') {
-    // Sync Nyawa Jika Player Lain Kena Tembak
     lives = data.lives;
     player2.invincible = 60; player2.shake = 15;
     spawnParts(player2.x, player2.y, '#44ffaa', 30, true); playSFX(150, 0.3, 0.5);
     updateHUD(); if(lives <= 0) gameOver();
   } else if (action === 'sync_state' && !amIHost) {
-    // FIX BUG 2 & 3: HOST MEMAKSA SINKRONISASI SEKTOR, SKOR & MUSUH
     level = data.level; score = data.score;
     if (state !== 'gameover' && state !== 'auth' && state !== 'menu') state = data.state;
     bossActive = data.bossActive;
     
-    // Sinkronisasi Boss
     if (boss && data.bossHp > 0) boss.hp = data.bossHp;
     else if (boss && data.bossHp <= 0) {
       spawnParts(boss.x, boss.y, '#ff4466', 80, true);
       bossActive = false; boss = null; state = 'levelclear'; levelClearT = 0; playSFX(100, 0.5, 1);
     }
     
-    // Sinkronisasi Kematian Musuh Biasa
     const hostIds = data.enemyHps.map(e => e.id);
     for(let i = enemies.length - 1; i >= 0; i--) {
       if(!hostIds.includes(enemies[i].id)) {
         spawnParts(enemies[i].x, enemies[i].y, enemies[i].color, 15);
-        enemies.splice(i, 1); // Hapus musuh yang mati di layar HOST
+        enemies.splice(i, 1);
       } else {
         let he = data.enemyHps.find(e => e.id === enemies[i].id);
         if(he) enemies[i].hp = he.hp;
@@ -374,12 +502,13 @@ function handleNetworkAction(action, data) {
 }
 
 // ==========================================
-// 4. GAME ENGINE
+// 6. GAME ENGINE
 // ==========================================
 function startGame(mode) {
   gameMode = mode; togglePanel(null);
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('pad').classList.remove('hidden');
+  document.getElementById('chatBox').classList.remove('hidden'); // Munculkan CHAT
   
   startMusic(bgmGame); 
   
@@ -387,6 +516,7 @@ function startGame(mode) {
   player.x=W/2; player.y=H+100; player.invincible=0; player.targetX = W/2; player.shake=0;
   player2.active = (mode === 'multi'); player2.x = W/2; player2.targetX = W/2; player2.shake=0; player2.invincible=0;
   bullets.length=0; eBullets.length=0; parts.length=0; shockwaves.length=0; bossActive=false;
+  document.getElementById('chatLog').innerHTML = ''; // Clear chat log
   
   initStars(); state = 'intro';
 }
@@ -408,13 +538,15 @@ function quitGame() {
   if(roomChannel) supabaseClient.removeChannel(roomChannel);
   document.getElementById('hud').classList.add('hidden');
   document.getElementById('pad').classList.add('hidden');
+  document.getElementById('chatBox').classList.add('hidden');
   startMusic(bgmMenu); togglePanel('panelMenu');
 }
 
 function gameOver() {
   state = 'gameover'; bgmGame.pause();
   spawnParts(player.x,player.y,'#ff4466',50, true); playSFX(100, 0.5, 1);
-  setTimeout(() => { showAlert(`GAME OVER! Score: ${score}`); quitGame(); }, 3000);
+  submitScoreToDB(score); // Tembak API Supabase untuk simpan skor
+  setTimeout(() => { showAlert(`GAME OVER! Score disubmit: ${score}`); quitGame(); }, 4000);
 }
 
 // --- Spawners ---
@@ -436,12 +568,11 @@ function spawnEnemies(){
   enemies.length=0; eBullets.length=0;
   const rows=Math.min(2+Math.floor(level/2), 6), cols=Math.min(5+level, 9);
   const startX = W/2 - ((cols-1)*45)/2;
-  // Pergerakan Deterministic (Fix Bug 3)
   for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
     enemies.push({
       id: `${r}_${c}`, 
       x:startX+c*45, y:-50-r*40, targetY:40+r*40, hp:(level>4)?2:1, 
-      color:EC[(r+level)%EC.length], dir:1, t: c*0.5 // Non-random
+      color:EC[(r+level)%EC.length], dir:1, t: c*0.5
     });
   }
 }
@@ -487,12 +618,9 @@ function update() {
   player.targetX = Math.max(20, Math.min(W-20, player.targetX));
   player.x += (player.targetX - player.x) * 0.3;
 
-  // FIX BUG 1: Heartbeat Posisi (Paksa kirim data walau diem supaya gak hilang)
   if(frame % 5 === 0) broadcastAction('move', {x: player.x});
-  
   if(player2.active) { player2.x += (player2.targetX - player2.x) * 0.3; }
 
-  // FIX BUG 2 & 3: HOST SINKRONISASI STATE SETIAP 15 FRAME
   if (gameMode === 'multi' && amIHost && frame % 15 === 0) {
     broadcastAction('sync_state', {
       level: level, score: score, state: state, bossActive: bossActive,
@@ -536,7 +664,6 @@ function update() {
     eShootT++;
     if(eShootT >= Math.max(20, 70-level*4) && enemies.length > 0) {
       eShootT = 0; 
-      // Deterministic Shooting:
       let sh = enemies[frame % enemies.length];
       eBullets.push({x:sh.x, y:sh.y+15, vy: 3+level*0.3}); playSFX(300, 0.02, 0.1);
     }
@@ -544,8 +671,8 @@ function update() {
   } else if (boss) {
     boss.t += 0.04; boss.x += boss.dx * boss.dir;
     if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
-    if (boss.y < 80) boss.y += 2; // Animasi drop awal
-    else boss.y = 80 + Math.sin(boss.t)*30; // Melayang naik turun
+    if (boss.y < 80) boss.y += 2; 
+    else boss.y = 80 + Math.sin(boss.t)*30; 
 
     boss.st++;
     if(boss.st >= Math.max(15, 40-level*1.5)) {
@@ -567,7 +694,6 @@ function update() {
     let b = bullets[i]; let hit = false;
     if(bossActive && boss && Math.abs(b.x-boss.x)<50 && Math.abs(b.y-boss.y)<35){
       boss.hp--; hit=true; spawnParts(b.x, b.y, '#ffaa00', 5); 
-      // Skor divalidasi oleh HOST saja
       if(gameMode === 'solo' || amIHost) { score += 20; }
       playSFX(500, 0.05, 0.05);
       
@@ -598,7 +724,7 @@ function hitPlayer() {
   lives--; player.invincible = 60; player.shake = 15; 
   spawnParts(player.x, player.y, '#00f0ff', 30, true); playSFX(150, 0.3, 0.5);
   updateHUD(); 
-  broadcastAction('player_hit', {lives: lives}); // Beritahu kawan kita kena hit
+  broadcastAction('player_hit', {lives: lives}); 
   if(lives <= 0) gameOver();
 }
 
@@ -613,7 +739,7 @@ function updateParticles() {
   }
 }
 
-// --- V3 Style Vector Render ---
+// --- Vector Render ---
 function draw() {
   ctx.clearRect(0,0,W,H);
   
@@ -697,7 +823,6 @@ function draw() {
   updateHUD();
 }
 
-// PESAWAT BEREVOLUSI BERDASARKAN LEVEL
 function drawShip(x, y, inv, isP2, name) {
   if(inv && Math.floor(frame/4)%2===0) return;
   ctx.save(); ctx.translate(x, y);
@@ -708,31 +833,26 @@ function drawShip(x, y, inv, isP2, name) {
   ctx.shadowColor = coreCol; ctx.shadowBlur = 15;
   ctx.strokeStyle = coreCol; ctx.lineWidth = 2; ctx.fillStyle = wingCol;
 
-  // Base Ship (Lv 1-2)
   ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(-16,14); ctx.lineTo(-6,10); ctx.lineTo(0,12); ctx.lineTo(6,10); ctx.lineTo(16,14); ctx.closePath();
   ctx.fill(); ctx.stroke();
 
-  // Evolution Wings (Lv 3+)
   if(level >= 3 || isP2) {
     ctx.beginPath(); ctx.moveTo(-16,14); ctx.lineTo(-24,20); ctx.lineTo(-6,12);
     ctx.moveTo(16,14); ctx.lineTo(24,20); ctx.lineTo(6,12);
     ctx.strokeStyle = '#fff'; ctx.stroke();
   }
 
-  // Evolution Cannons (Lv 5+)
   if(level >= 5 && !isP2) {
     ctx.beginPath(); ctx.moveTo(-10, 5); ctx.lineTo(-10, -10);
     ctx.moveTo(10, 5); ctx.lineTo(10, -10);
     ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 3; ctx.stroke();
   }
 
-  // Core & Engine Flame
   ctx.fillStyle = coreCol; ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,4); ctx.lineTo(5,4); ctx.closePath(); ctx.fill();
   const fl = 0.6 + Math.sin(frame*0.5)*0.4;
   ctx.shadowColor = '#ff8800'; ctx.strokeStyle = `rgba(255,160,0,${fl})`; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(-6,12); ctx.lineTo(-4,12+fl*15); ctx.lineTo(0,12); ctx.moveTo(0,12); ctx.lineTo(4,12+fl*15); ctx.lineTo(6,12); ctx.stroke();
 
-  // Name Tag
   ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
   ctx.fillText(name, 0, 35);
   ctx.restore();
@@ -758,10 +878,15 @@ bindBtn('btnLeft', 'left'); bindBtn('btnRight', 'right');
 document.getElementById('btnPause').addEventListener('click', () => { if(state === 'playing') triggerPause(); });
 
 document.addEventListener('keydown', e => {
+  // JANGAN gerakkan pesawat jika user sedang mengetik chat
+  if (document.activeElement === document.getElementById('chatInput') || document.activeElement === document.getElementById('inputName')) return;
+  
   if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
   if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
 });
 document.addEventListener('keyup', e => {
+  if (document.activeElement === document.getElementById('chatInput') || document.activeElement === document.getElementById('inputName')) return;
+  
   if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
   if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false;
 });
