@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Cosmic Defender V12 - The Masterpiece</title>
+  <title>Cosmic Defender V12 - Perfect Sync</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -253,7 +253,6 @@ let roomChannel = null;
 let roomIndex = 1; 
 let amIHost = false; 
 let isSyncingStart = false; 
-let countdownTimer = null; // V12 FIX
 
 // AUDIO
 let audioCtx = null;
@@ -276,12 +275,11 @@ let baseSpeed = 11;
 const player = {x:W/2, y:H+100, targetX:W/2, invincible:0, shake:0, speed: baseSpeed * sensitivity}; 
 const player2 = {x:W/2, y:H-160, active:false, name:"P2", invincible:0, shake:0}; 
 
-// ENTITIES & SYSTEM
+// ENTITIES
 const bullets=[], eBullets=[], enemies=[], parts=[], stars=[], shockwaves=[];
 let powerups = []; 
 let laserTimer = 0, p2LaserTimer = 0; 
 let shotCD=0, eShootT=0, bossActive=false, boss=null, levelClearT=0;
-let edgeCooldown = 0; // V12 FIX: Anti-Bounce Spam
 
 // ==========================================
 // 2. UI & AUDIO SYSTEM
@@ -350,13 +348,17 @@ function playSFX(freq, vol, dur, type='square'){
 }
 
 // ==========================================
-// 3. LEADERBOARD SYSTEM
+// 3. LEADERBOARD SYSTEM (SUPABASE)
 // ==========================================
 async function fetchLeaderboard() {
   togglePanel('panelLeaderboard');
   document.getElementById('lbContent').innerHTML = '<div class="spinner" style="margin-top:20px;"></div>';
   
-  const { data, error } = await supabaseClient.from('leaderboards').select('*').order('score', { ascending: false }).limit(10);
+  const { data, error } = await supabaseClient
+    .from('leaderboards')
+    .select('*')
+    .order('score', { ascending: false })
+    .limit(10);
 
   if (error) {
     document.getElementById('lbContent').innerHTML = `
@@ -408,7 +410,7 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
 });
 
 // ==========================================
-// 5. DYNAMIC MULTIPLAYER (HOST SYNC FIX)
+// 5. DYNAMIC MULTIPLAYER (ABSOLUTE SYNC)
 // ==========================================
 function startMatchmaking() {
   startMusic(bgmMenu);
@@ -450,15 +452,12 @@ function attemptJoinRoom() {
         amIHost = (myIndex === 0);
         player2.name = (myIndex === 0) ? users[1].name : users[0].name;
         
-        // V12 FIX: Host Memulai Broadcast Detak Countdown
+        // V12 FIX: Host men-trigger hitung mundur untuk DIRI SENDIRI dan CLIENT
         if (amIHost && !isSyncingStart) {
           isSyncingStart = true;
-          let c = 3;
-          countdownTimer = setInterval(() => {
-            broadcastAction('countdown_tick', { count: c });
-            handleCountdownTick(c);
-            if (c === 0) clearInterval(countdownTimer);
-            c--;
+          setTimeout(() => {
+            broadcastAction('start_countdown', {}); // Beritahu Client
+            triggerMultiplayerCountdown(); // Eksekusi secara lokal untuk Host
           }, 1000);
         }
       } else {
@@ -470,29 +469,36 @@ function attemptJoinRoom() {
       handleNetworkAction(data.action, data.data);
     })
     .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') await roomChannel.track({ name: playerName, joined_at: Date.now() });
+      if (status === 'SUBSCRIBED') {
+        await roomChannel.track({ name: playerName, joined_at: Date.now() });
+      }
     });
 }
 
-// V12 FIX: Handler Detak Hitung Mundur Global
-function handleCountdownTick(count) {
+function triggerMultiplayerCountdown() {
   isSyncingStart = true;
   document.getElementById('btnAbortLobby').style.display = 'none'; 
   document.getElementById('lobbySpinner').style.display = 'none';
   
-  if (count > 0) {
-    playSFX(400, 0.1, 0.2);
-    document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:24px; color:#00f0ff;">SYNCING PILOTS... ${count}</span>`;
-  } else {
-    playSFX(800, 0.2, 0.5);
-    document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:28px; color:#44ffaa;">LAUNCHING!</span>`;
-    setTimeout(() => startGame('multi'), 500);
-  }
+  let count = 3; playSFX(400, 0.1, 0.2);
+  document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:24px; color:#00f0ff;">SYNCING PILOTS... ${count}</span>`;
+  
+  let iv = setInterval(() => {
+    count--;
+    if (count > 0) {
+      playSFX(400, 0.1, 0.2);
+      document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:24px; color:#00f0ff;">SYNCING PILOTS... ${count}</span>`;
+    } else {
+      clearInterval(iv);
+      playSFX(800, 0.2, 0.5);
+      document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:28px; color:#44ffaa;">LAUNCHING!</span>`;
+      setTimeout(() => startGame('multi'), 500);
+    }
+  }, 1000);
 }
 
 function leaveLobby() {
   if(roomChannel) supabaseClient.removeChannel(roomChannel);
-  if(countdownTimer) clearInterval(countdownTimer);
   togglePanel('panelMenu');
 }
 
@@ -503,7 +509,9 @@ function broadcastAction(action, data) {
 }
 
 function handleNetworkAction(action, data) {
-  if (action === 'countdown_tick') handleCountdownTick(data.count); // V12 FIX Sync
+  if (action === 'start_countdown') {
+    if (!isSyncingStart) triggerMultiplayerCountdown();
+  }
   else if (action === 'move') { player2.targetX = data.x; player2.active = true; } 
   else if (action === 'shoot') {
     data.bData.forEach(bd => bullets.push({x: player2.x + bd.x, y: player2.y + bd.y, vy: bd.vy, vx: bd.vx, col: bd.col, isP2: true}));
@@ -544,7 +552,7 @@ function handleNetworkAction(action, data) {
   else if (action === 'start_level') {
     level = data.level; player.y = H-160;
     if (data.isBoss) spawnBoss(data.bType); else spawnEnemies();
-    state = 'playing'; levelClearT = 0; edgeCooldown = 0; showAlert(`SECTOR ${level} REACHED`, false);
+    state = 'playing'; levelClearT = 0; showAlert(`SECTOR ${level} REACHED`, false);
   }
   else if (action === 'sync_state' && !amIHost) {
     score = data.score; if (boss && data.bossHp > 0) boss.hp = data.bossHp;
@@ -560,6 +568,7 @@ function handleNetworkAction(action, data) {
 // 6. GAME ENGINE
 // ==========================================
 function startGame(mode) {
+  isSyncingStart = false; // Reset flag saat game dimulai
   gameMode = mode; togglePanel(null);
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('pad').classList.remove('hidden');
@@ -567,7 +576,7 @@ function startGame(mode) {
   
   startMusic(bgmGame); 
   
-  score=0; lives=3; level=1; frame=0; edgeCooldown=0;
+  score=0; lives=3; level=1; frame=0;
   player.speed = baseSpeed * sensitivity;
   player.x=W/2; player.y=H+100; player.invincible=0; player.targetX = W/2; player.shake=0;
   player2.active = (mode === 'multi'); player2.x = W/2; player2.targetX = W/2; player2.shake=0; player2.invincible=0;
@@ -593,7 +602,6 @@ function triggerResume(sendNet = true) {
 function quitGame() {
   state = 'menu';
   if(roomChannel) supabaseClient.removeChannel(roomChannel);
-  if(countdownTimer) clearInterval(countdownTimer);
   document.getElementById('hud').classList.add('hidden');
   document.getElementById('pad').classList.add('hidden');
   document.getElementById('chatBox').classList.add('hidden');
@@ -623,9 +631,9 @@ function spawnParts(x, y, col, n=15, isBig=false){
 }
 
 function spawnPowerUpDrop(x, y) {
-  if (Math.random() > 0.03) return; // V12 FIX: 3% Chance Epic Drop
+  if (Math.random() > 0.15) return; 
   let pType = Math.random() < 0.5 ? 'laser' : 'life';
-  let p = { id: Date.now() + Math.random(), x: x, y: y, type: pType, vy: 2, t: Math.random()*100 };
+  let p = { id: Date.now() + Math.random(), x: x, y: y, type: pType, vy: 2 };
   powerups.push(p);
   if (gameMode === 'multi') broadcastAction('spawn_powerup', p);
 }
@@ -701,7 +709,7 @@ function update() {
       let isBoss = (level%5===0);
       let bType = Math.floor(Math.random() * 3);
       if(isBoss) spawnBoss(bType); else spawnEnemies();
-      state='playing'; levelClearT=0; edgeCooldown=0; showAlert(`SECTOR ${level} REACHED`, false);
+      state='playing'; levelClearT=0; showAlert(`SECTOR ${level} REACHED`, false);
       if(gameMode === 'multi') broadcastAction('start_level', { level: level, isBoss: isBoss, bType: bType });
     }
     return; 
@@ -760,12 +768,12 @@ function update() {
     }
   }
 
-  // --- POWERUP LOGIC (V12 FIX: Enhanced Animation Tick) ---
+  // --- POWERUP LOGIC ---
   for (let i = powerups.length - 1; i >= 0; i--) {
-    let p = powerups[i]; p.y += p.vy; p.t += 0.1;
+    let p = powerups[i]; p.y += p.vy;
     if (p.y > H + 20) { powerups.splice(i, 1); continue; }
     
-    if (Math.abs(p.x - player.x) < 30 && Math.abs(p.y - player.y) < 30) {
+    if (Math.abs(p.x - player.x) < 25 && Math.abs(p.y - player.y) < 25) {
       applyPowerupEffect(p.type, true);
       if (gameMode === 'multi') broadcastAction('collect_powerup', {id: p.id, type: p.type, sender: playerName});
       powerups.splice(i, 1); continue;
@@ -792,42 +800,23 @@ function update() {
 
   bullets.forEach(b=>{ b.y+=b.vy; if(b.vx)b.x+=b.vx; });
   for(let i=bullets.length-1;i>=0;i--) if(bullets[i].y<-10) bullets.splice(i,1);
-  
   if(player.invincible>0) player.invincible--;
-  if(edgeCooldown > 0) edgeCooldown--;
 
   if(!bossActive) {
     let spd = Math.min(2.5, 1 + level * 0.1); 
     let edge = false;
-    
-    // V12 FIX: Sistem Batas Aman (Anti-Stuck Bottom Penalty)
-    for (let j = enemies.length - 1; j >= 0; j--) {
-      let e = enemies[j];
-      if(e.y < e.targetY) {
-        e.y += 2;
-      } else { 
+    enemies.forEach(e => {
+      if(e.y < e.targetY) e.y += 2;
+      else { 
         let moveSpd = e.type === 2 ? spd * 1.5 : (e.type === 1 ? spd * 0.7 : spd);
         e.x += moveSpd * e.dir; e.t += 0.08; 
+        
         if((e.x > W-25 && e.dir > 0) || (e.x < 25 && e.dir < 0)) edge = true; 
       }
+    });
+    if(edge) enemies.forEach(e => { e.dir *= -1; e.y += Math.min(15, 5+level); });
 
-      // Deteksi Lolos Kebawah (Penalty HP)
-      let hitBody = (Math.abs(e.x - player.x) < 25 && Math.abs(e.y - player.y) < 25 && player.invincible <= 0);
-      let passBottom = (e.y > H + 30);
-      
-      if (hitBody || passBottom) {
-        hitPlayer();
-        spawnParts(e.x, e.y, e.color, 15);
-        if (gameMode === 'multi' && amIHost) broadcastAction('enemy_killed', {id: e.id, x:e.x, y:e.y, color:e.color});
-        enemies.splice(j, 1);
-        continue;
-      }
-    }
-
-    if(edge && edgeCooldown <= 0) { 
-      enemies.forEach(e => { e.dir *= -1; e.y += Math.min(15, 5+level); }); 
-      edgeCooldown = 15; // Cegah bounce dobel
-    }
+    enemies.forEach(e => { if(e.y > player.y-30 && player.invincible <= 0) hitPlayer(); });
 
     if (gameMode === 'solo' || amIHost) {
       eShootT++;
@@ -848,7 +837,8 @@ function update() {
     }
   } else if (boss) {
     boss.t += 0.04; 
-    if (boss.type === 0) {
+    
+    if (boss.type === 0) { 
       boss.x += boss.dx * boss.dir;
       if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
       boss.y = 80 + Math.sin(boss.t)*30; 
@@ -903,7 +893,7 @@ function update() {
           e.hp--;
           if(e.hp <= 0) {
             spawnParts(e.x, e.y, e.color, 15); score += 20; playSFX(400, 0.05, 0.1);
-            spawnPowerUpDrop(e.x, e.y);
+            spawnPowerUpDrop(e.x, e.y); 
             if(gameMode === 'multi') broadcastAction('enemy_killed', {id: e.id, x:e.x, y:e.y, color:e.color});
             enemies.splice(j,1); 
           } else {
@@ -917,9 +907,7 @@ function update() {
   updateParticles();
 }
 
-// V12 FIX: Cegah Instan Mati Kena Keroyok
 function hitPlayer() {
-  if (player.invincible > 0) return; // Shield Aktif
   lives--; player.invincible = 60; player.shake = 15; 
   spawnParts(player.x, player.y, '#00f0ff', 30, true); playSFX(150, 0.3, 0.5);
   updateHUD(); broadcastAction('player_hit', {lives: lives}); 
@@ -942,7 +930,7 @@ function drawLaser(x, y, color, shadowCol) {
   let a = Math.random() * 0.4 + 0.6;
   ctx.fillStyle = color; ctx.shadowColor = shadowCol; ctx.shadowBlur = 20;
   ctx.fillRect(x - 20, 0, 40, y);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 5, 0, 10, y);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 5, 0, 10, y); 
   ctx.shadowBlur = 0;
 }
 
@@ -972,29 +960,13 @@ function draw() {
   });
   ctx.globalAlpha = 1;
 
-  // V12 FIX: Efek Visual Drop Items Gelembung Kilau Premium
   powerups.forEach(p => {
     ctx.save(); ctx.translate(p.x, p.y);
     let isLife = p.type === 'life';
-    let baseCol = isLife ? '#44ffaa' : '#ffaa00';
-    
-    // Aura Pulse
-    let pulse = 1 + Math.sin(frame * 0.1) * 0.2;
-    ctx.fillStyle = baseCol; ctx.globalAlpha = 0.3 * pulse;
-    ctx.beginPath(); ctx.arc(0, 0, 15 * pulse, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // Bubbles / Sparkles mengelilingi
-    for(let k=0; k<3; k++) {
-       let angle = (p.t || 0) * (k+1)*0.5 + k * 2.1;
-       let bx = Math.cos(angle) * 12; let by = Math.sin(angle) * 12;
-       ctx.fillStyle = '#fff'; ctx.shadowBlur = 5; ctx.shadowColor = '#fff';
-       ctx.beginPath(); ctx.arc(bx, by, 1.5, 0, Math.PI*2); ctx.fill();
-    }
-
-    ctx.shadowColor = baseCol; ctx.shadowBlur = 15;
-    ctx.font = '18px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(isLife ? '♥' : '⚡', 0, 2);
+    ctx.fillStyle = isLife ? '#44ffaa' : '#ffaa00';
+    ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15;
+    ctx.font = '20px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(isLife ? '♥' : '⚡', 0, 0);
     ctx.restore();
   });
 
