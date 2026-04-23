@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Cosmic Defender V5 - Neon Evolution</title>
+  <title>Cosmic Defender V6 - Ultimate Sync</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -198,15 +198,19 @@ let gameMode = 'solo';
 let state = 'auth'; 
 let frame = 0;
 
+// SUPABASE CONFIG
 const SUPABASE_URL = 'https://blvfsbsgtbvnuaisglmz.supabase.co'; 
 const SUPABASE_KEY = 'sb_publishable_uI4hO-j7K8QWim1fVGQvSw_IrKtp1kP'; 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let roomChannel = null;
+let amIHost = false; // Sistem Host-Client
 
+// AUDIO
 let audioCtx = null;
 const bgmMenu = document.getElementById('bgmAudio'); bgmMenu.volume = 0.3;
 const bgmGame = document.getElementById('bgmGame'); bgmGame.volume = 0.4;
 
+// CANVAS
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 let W, H;
@@ -216,7 +220,7 @@ window.addEventListener('resize', resize); resize();
 const keys = {left:false, right:false};
 let score = 0, lives = 3, level = 1, resumeTimer = 0;
 const player = {x:W/2, y:H+100, targetX:W/2, invincible:0, shake:0, speed:7}; 
-const player2 = {x:W/2, y:H-160, active:false, name:"P2"}; 
+const player2 = {x:W/2, y:H-160, active:false, name:"P2", invincible:0, shake:0}; 
 
 const bullets=[], eBullets=[], enemies=[], parts=[], stars=[], shockwaves=[];
 let shotCD=0, eShootT=0, bossActive=false, boss=null, levelClearT=0;
@@ -254,14 +258,16 @@ function saveName() {
   const input = document.getElementById('inputName').value.trim();
   if(input.length < 3) return showAlert("Callsign min 3 karakter!");
   playerName = input.toUpperCase(); localStorage.setItem('cosmic_name', playerName);
-  playSFX(600, 0.1, 0.1, 'square'); initUI();
+  playSFX(600, 0.1, 0.1, 'square'); 
+  startMusic(bgmMenu); // Trigger BGM Pertama Kali
+  initUI();
 }
 
-// BGM dipicu manual
 function startMusic(track) {
   bgmMenu.pause(); bgmGame.pause();
   track.currentTime = 0;
-  track.play().catch(e => console.log("BGM ditahan browser"));
+  let playPromise = track.play();
+  if(playPromise !== undefined) playPromise.catch(e => console.log("Auto-play ditahan browser."));
 }
 
 function playSFX(freq, vol, dur, type='square'){
@@ -277,10 +283,10 @@ function playSFX(freq, vol, dur, type='square'){
 }
 
 // ==========================================
-// 3. MULTIPLAYER (BUG 4 FIX)
+// 3. MULTIPLAYER SYNC (HOST-CLIENT)
 // ==========================================
 function joinLobby() {
-  startMusic(bgmMenu); // Trigger BGM Menu
+  startMusic(bgmMenu);
   togglePanel('panelLobby'); gameMode = 'multi';
   document.getElementById('lobbyPlayers').innerHTML = '';
 
@@ -290,17 +296,19 @@ function joinLobby() {
       const st = roomChannel.presenceState(); let users = [];
       for (const id in st) { users.push(st[id][0]); }
       
-      let html = ''; users.forEach(u => html += `<div>> ${u.name} [READY]</div>`);
+      let html = ''; users.forEach(u => html += `<div style="color:#44ffaa;">> ${u.name} [CONNECTED]</div>`);
       document.getElementById('lobbyPlayers').innerHTML = html;
 
       if (users.length === 2) {
         document.getElementById('lobbyStatus').innerText = "LINK ESTABLISHED! STARTING...";
+        // Tentukan siapa HOST (yang join pertama)
+        amIHost = (users[0].joined_at < users[1].joined_at) ? (playerName === users[0].name) : (playerName === users[1].name);
         player2.name = (users[0].name === playerName) ? users[1].name : users[0].name;
+        
         setTimeout(() => startGame('multi'), 2000);
       } else if (users.length > 2) document.getElementById('lobbyStatus').innerText = "Room penuh!";
       else document.getElementById('lobbyStatus').innerText = "Mencari player ke-2...";
     })
-    // FIX BUG 4: Menangkap payload.payload secara benar dari Supabase v2
     .on('broadcast', { event: 'game_action' }, (response) => {
       const data = response.payload; 
       handleNetworkAction(data.action, data.data);
@@ -324,7 +332,7 @@ function broadcastAction(action, data) {
 function handleNetworkAction(action, data) {
   if (action === 'move') {
     player2.targetX = data.x;
-    player2.active = true;
+    player2.active = true; // Fix Bug 1: Pastikan aktif jika menerima gerakan
   } else if (action === 'shoot') {
     bullets.push({x: player2.x, y: player2.y-20, vy: -10, col: '#44ffaa', isP2: true});
     playSFX(850, 0.03, 0.05); 
@@ -332,6 +340,36 @@ function handleNetworkAction(action, data) {
     state = 'paused'; togglePanel('panelPause');
   } else if (action === 'resume') {
     triggerResume(false); 
+  } else if (action === 'player_hit') {
+    // Sync Nyawa Jika Player Lain Kena Tembak
+    lives = data.lives;
+    player2.invincible = 60; player2.shake = 15;
+    spawnParts(player2.x, player2.y, '#44ffaa', 30, true); playSFX(150, 0.3, 0.5);
+    updateHUD(); if(lives <= 0) gameOver();
+  } else if (action === 'sync_state' && !amIHost) {
+    // FIX BUG 2 & 3: HOST MEMAKSA SINKRONISASI SEKTOR, SKOR & MUSUH
+    level = data.level; score = data.score;
+    if (state !== 'gameover' && state !== 'auth' && state !== 'menu') state = data.state;
+    bossActive = data.bossActive;
+    
+    // Sinkronisasi Boss
+    if (boss && data.bossHp > 0) boss.hp = data.bossHp;
+    else if (boss && data.bossHp <= 0) {
+      spawnParts(boss.x, boss.y, '#ff4466', 80, true);
+      bossActive = false; boss = null; state = 'levelclear'; levelClearT = 0; playSFX(100, 0.5, 1);
+    }
+    
+    // Sinkronisasi Kematian Musuh Biasa
+    const hostIds = data.enemyHps.map(e => e.id);
+    for(let i = enemies.length - 1; i >= 0; i--) {
+      if(!hostIds.includes(enemies[i].id)) {
+        spawnParts(enemies[i].x, enemies[i].y, enemies[i].color, 15);
+        enemies.splice(i, 1); // Hapus musuh yang mati di layar HOST
+      } else {
+        let he = data.enemyHps.find(e => e.id === enemies[i].id);
+        if(he) enemies[i].hp = he.hp;
+      }
+    }
   }
 }
 
@@ -343,11 +381,11 @@ function startGame(mode) {
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('pad').classList.remove('hidden');
   
-  startMusic(bgmGame); // Ganti musik jadi In-Game
+  startMusic(bgmGame); 
   
   score=0; lives=3; level=1; frame=0;
   player.x=W/2; player.y=H+100; player.invincible=0; player.targetX = W/2; player.shake=0;
-  player2.active = (mode === 'multi'); player2.x = W/2; player2.targetX = W/2;
+  player2.active = (mode === 'multi'); player2.x = W/2; player2.targetX = W/2; player2.shake=0; player2.invincible=0;
   bullets.length=0; eBullets.length=0; parts.length=0; shockwaves.length=0; bossActive=false;
   
   initStars(); state = 'intro';
@@ -398,8 +436,13 @@ function spawnEnemies(){
   enemies.length=0; eBullets.length=0;
   const rows=Math.min(2+Math.floor(level/2), 6), cols=Math.min(5+level, 9);
   const startX = W/2 - ((cols-1)*45)/2;
+  // Pergerakan Deterministic (Fix Bug 3)
   for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
-    enemies.push({x:startX+c*45, y:-50-r*40, targetY:40+r*40, hp:(level>4)?2:1, color:EC[(r+level)%EC.length], dir:1, t:Math.random()*6.28});
+    enemies.push({
+      id: `${r}_${c}`, 
+      x:startX+c*45, y:-50-r*40, targetY:40+r*40, hp:(level>4)?2:1, 
+      color:EC[(r+level)%EC.length], dir:1, t: c*0.5 // Non-random
+    });
   }
 }
 
@@ -444,8 +487,19 @@ function update() {
   player.targetX = Math.max(20, Math.min(W-20, player.targetX));
   player.x += (player.targetX - player.x) * 0.3;
 
-  if(Math.abs(player.targetX - player.x) > 0.5 && frame % 3 === 0) broadcastAction('move', {x: player.x});
+  // FIX BUG 1: Heartbeat Posisi (Paksa kirim data walau diem supaya gak hilang)
+  if(frame % 5 === 0) broadcastAction('move', {x: player.x});
+  
   if(player2.active) { player2.x += (player2.targetX - player2.x) * 0.3; }
+
+  // FIX BUG 2 & 3: HOST SINKRONISASI STATE SETIAP 15 FRAME
+  if (gameMode === 'multi' && amIHost && frame % 15 === 0) {
+    broadcastAction('sync_state', {
+      level: level, score: score, state: state, bossActive: bossActive,
+      bossHp: boss ? boss.hp : 0,
+      enemyHps: enemies.map(e => ({id: e.id, hp: e.hp}))
+    });
+  }
 
   // Shooting
   if(shotCD <= 0) {
@@ -467,7 +521,7 @@ function update() {
   for(let i=bullets.length-1;i>=0;i--) if(bullets[i].y<-10) bullets.splice(i,1);
   if(player.invincible>0) player.invincible--;
 
-  // Enemies
+  // Enemies Update
   if(!bossActive) {
     let spd = Math.min(2.5, 1 + level * 0.1); 
     let edge = false;
@@ -481,12 +535,13 @@ function update() {
 
     eShootT++;
     if(eShootT >= Math.max(20, 70-level*4) && enemies.length > 0) {
-      eShootT = 0; let sh = enemies[Math.floor(Math.random()*enemies.length)];
+      eShootT = 0; 
+      // Deterministic Shooting:
+      let sh = enemies[frame % enemies.length];
       eBullets.push({x:sh.x, y:sh.y+15, vy: 3+level*0.3}); playSFX(300, 0.02, 0.1);
     }
     if(enemies.length === 0 && state === 'playing') { state='levelclear'; levelClearT=0; }
   } else if (boss) {
-    // FIX BUG 5: Boss Movement Restored
     boss.t += 0.04; boss.x += boss.dx * boss.dir;
     if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
     if (boss.y < 80) boss.y += 2; // Animasi drop awal
@@ -512,9 +567,13 @@ function update() {
     let b = bullets[i]; let hit = false;
     if(bossActive && boss && Math.abs(b.x-boss.x)<50 && Math.abs(b.y-boss.y)<35){
       boss.hp--; hit=true; spawnParts(b.x, b.y, '#ffaa00', 5); 
-      if(!b.isP2) score += 20; playSFX(500, 0.05, 0.05);
+      // Skor divalidasi oleh HOST saja
+      if(gameMode === 'solo' || amIHost) { score += 20; }
+      playSFX(500, 0.05, 0.05);
+      
       if(boss.hp <= 0) {
-        spawnParts(boss.x, boss.y, '#ff4466', 80, true); score+=1000;
+        spawnParts(boss.x, boss.y, '#ff4466', 80, true); 
+        if(gameMode === 'solo' || amIHost) score+=1000;
         bossActive=false; boss=null; state='levelclear'; levelClearT=0; playSFX(100, 0.5, 1);
       }
     }
@@ -524,7 +583,8 @@ function update() {
         e.hp--; hit = true;
         if(e.hp <= 0) {
           spawnParts(e.x, e.y, e.color, 15); enemies.splice(j,1); 
-          if(!b.isP2) score += 20; playSFX(400, 0.05, 0.1);
+          if(gameMode === 'solo' || amIHost) score += 20;
+          playSFX(400, 0.05, 0.1);
         } else spawnParts(e.x, e.y, '#fff', 5);
       }
     }
@@ -535,9 +595,11 @@ function update() {
 }
 
 function hitPlayer() {
-  lives--; player.invincible = 60; player.shake = 15; // Set shake frames
+  lives--; player.invincible = 60; player.shake = 15; 
   spawnParts(player.x, player.y, '#00f0ff', 30, true); playSFX(150, 0.3, 0.5);
-  updateHUD(); if(lives <= 0) gameOver();
+  updateHUD(); 
+  broadcastAction('player_hit', {lives: lives}); // Beritahu kawan kita kena hit
+  if(lives <= 0) gameOver();
 }
 
 function updateParticles() {
@@ -607,9 +669,17 @@ function draw() {
     ctx.restore();
   }
 
-  if(player2.active) drawShip(player2.x, player2.y, false, true, player2.name);
+  // Draw Player 2
+  if(player2.active) {
+    let sx2 = player2.shake > 0 ? (Math.random()-.5) * player2.shake : 0;
+    let sy2 = player2.shake > 0 ? (Math.random()-.5) * player2.shake * 0.5 : 0;
+    if (player2.shake > 0) player2.shake--;
+    drawShip(player2.x + sx2, player2.y + sy2, player2.invincible>0, true, player2.name);
+    if(player2.invincible > 0) player2.invincible--;
+  }
+
+  // Draw Player 1
   if(state !== 'gameover') {
-    // Fix Bug Getar (Hanya bergetar jika shake > 0)
     let sx = player.shake > 0 ? (Math.random()-.5) * player.shake : 0;
     let sy = player.shake > 0 ? (Math.random()-.5) * player.shake * 0.5 : 0;
     if (player.shake > 0) player.shake--;
