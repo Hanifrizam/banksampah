@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Cosmic Defender V10 - The Final Polish</title>
+  <title>Cosmic Defender V11 - Epic Arsenal</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -252,7 +252,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let roomChannel = null;
 let roomIndex = 1; 
 let amIHost = false; 
-let isSyncingStart = false; // Flag untuk loading sinkron
+let isSyncingStart = false; 
 
 // AUDIO
 let audioCtx = null;
@@ -275,7 +275,10 @@ let baseSpeed = 11;
 const player = {x:W/2, y:H+100, targetX:W/2, invincible:0, shake:0, speed: baseSpeed * sensitivity}; 
 const player2 = {x:W/2, y:H-160, active:false, name:"P2", invincible:0, shake:0}; 
 
+// ENTITIES
 const bullets=[], eBullets=[], enemies=[], parts=[], stars=[], shockwaves=[];
+let powerups = []; // NEW: Array untuk Power-Ups Drop
+let laserTimer = 0, p2LaserTimer = 0; // NEW: Timer durasi laser
 let shotCD=0, eShootT=0, bossActive=false, boss=null, levelClearT=0;
 
 // ==========================================
@@ -309,7 +312,6 @@ function initUI() {
   document.getElementById('slGap').oninput = (e) => { root.style.setProperty('--btn-gap', e.target.value+'px'); document.getElementById('valGap').innerText = e.target.value+'px'; };
   document.getElementById('slBot').oninput = (e) => { root.style.setProperty('--btn-bottom', e.target.value+'px'); document.getElementById('valBot').innerText = e.target.value+'px'; };
   
-  // NEW: Sensitivity Slider
   document.getElementById('slSens').oninput = (e) => { 
     sensitivity = e.target.value / 10; 
     document.getElementById('valSens').innerText = sensitivity.toFixed(1) + 'x'; 
@@ -346,30 +348,25 @@ function playSFX(freq, vol, dur, type='square'){
 }
 
 // ==========================================
-// 3. LEADERBOARD SYSTEM (SUPABASE)
+// 3. LEADERBOARD SYSTEM
 // ==========================================
 async function fetchLeaderboard() {
   togglePanel('panelLeaderboard');
   document.getElementById('lbContent').innerHTML = '<div class="spinner" style="margin-top:20px;"></div>';
   
-  const { data, error } = await supabaseClient
-    .from('leaderboards')
-    .select('*')
-    .order('score', { ascending: false })
-    .limit(10);
+  const { data, error } = await supabaseClient.from('leaderboards').select('*').order('score', { ascending: false }).limit(10);
 
   if (error) {
     document.getElementById('lbContent').innerHTML = `
       <p style="color:#ff4466; text-align:left; font-size:12px;">
-      <b>Gagal mengambil data!</b><br>
-      Pesan: ${error.message}<br><br>
-      <i>Hint: Pastikan Anda sudah membuat tabel 'leaderboards' di Supabase dan mematikan fitur Row Level Security (RLS).</i>
+      <b>Gagal mengambil data!</b><br>Pesan: ${error.message}<br>
+      <i>Hint: Pastikan Anda sudah membuat tabel 'leaderboards' dan mematikan fitur RLS.</i>
       </p>`;
     return;
   }
 
   let html = '<table class="lb-table"><tr><th>RANK</th><th>PILOT</th><th>SCORE</th></tr>';
-  if(!data || data.length === 0) html += '<tr><td colspan="3" style="text-align:center;">Belum ada skor yang tercatat.</td></tr>';
+  if(!data || data.length === 0) html += '<tr><td colspan="3" style="text-align:center;">Belum ada skor.</td></tr>';
   else {
     data.forEach((row, i) => {
       html += `<tr><td>#${i+1}</td><td>${row.name}</td><td style="color:#00f0ff">${row.score}</td></tr>`;
@@ -382,7 +379,7 @@ async function fetchLeaderboard() {
 async function submitScoreToDB(finalScore) {
   if (finalScore <= 0) return;
   const { error } = await supabaseClient.from('leaderboards').insert([{ name: playerName, score: finalScore }]);
-  if (error) console.error("Gagal submit skor. RLS aktif?", error);
+  if (error) console.error("Gagal submit skor.", error);
 }
 
 // ==========================================
@@ -395,10 +392,7 @@ function appendChatMessage(sender, text) {
   msg.innerHTML = `<b style="color:${sender===playerName?'#00f0ff':'#44ffaa'}">${sender}:</b> ${text}`;
   log.appendChild(msg);
   log.scrollTop = log.scrollHeight;
-  setTimeout(() => { 
-    msg.style.opacity = 0; 
-    setTimeout(() => msg.remove(), 500); 
-  }, 5000);
+  setTimeout(() => { msg.style.opacity = 0; setTimeout(() => msg.remove(), 500); }, 5000);
 }
 
 document.getElementById('chatInput').addEventListener('keydown', function(e) {
@@ -407,13 +401,12 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
     const text = this.value.trim();
     appendChatMessage(playerName, text);
     broadcastAction('chat_msg', { text: text, sender: playerName });
-    this.value = '';
-    this.blur();
+    this.value = ''; this.blur();
   }
 });
 
 // ==========================================
-// 5. DYNAMIC MULTIPLAYER & LOADING SYNC
+// 5. DYNAMIC MULTIPLAYER (ABSOLUTE SYNC)
 // ==========================================
 function startMatchmaking() {
   startMusic(bgmMenu);
@@ -451,15 +444,10 @@ function attemptJoinRoom() {
       users.slice(0,2).forEach(u => html += `<div style="color:#44ffaa;">> ${u.name} [READY]</div>`);
       document.getElementById('lobbyPlayers').innerHTML = html;
 
-      // JIKA PAS 2 ORANG, HOST MEMULAI HITUNG MUNDUR SINKRONISASI
       if (users.length === 2 && myIndex < 2) {
         amIHost = (myIndex === 0);
         player2.name = (myIndex === 0) ? users[1].name : users[0].name;
-        
-        if (amIHost) {
-          // Beri jeda sedikit agar client selesai render tulisan READY
-          setTimeout(() => broadcastAction('start_countdown', {}), 1000);
-        }
+        if (amIHost) setTimeout(() => broadcastAction('start_countdown', {}), 1000);
       } else {
         document.getElementById('lobbyStatus').innerText = `Menunggu player ke-2 di Sektor [${roomIndex}]...`;
       }
@@ -469,19 +457,16 @@ function attemptJoinRoom() {
       handleNetworkAction(data.action, data.data);
     })
     .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await roomChannel.track({ name: playerName, joined_at: Date.now() });
-      }
+      if (status === 'SUBSCRIBED') await roomChannel.track({ name: playerName, joined_at: Date.now() });
     });
 }
 
 function triggerMultiplayerCountdown() {
   isSyncingStart = true;
-  document.getElementById('btnAbortLobby').style.display = 'none'; // Cegah abort saat loading
+  document.getElementById('btnAbortLobby').style.display = 'none'; 
   document.getElementById('lobbySpinner').style.display = 'none';
   
-  let count = 3;
-  playSFX(400, 0.1, 0.2);
+  let count = 3; playSFX(400, 0.1, 0.2);
   document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:24px; color:#00f0ff;">SYNCING PILOTS... ${count}</span>`;
   
   let iv = setInterval(() => {
@@ -493,7 +478,7 @@ function triggerMultiplayerCountdown() {
       clearInterval(iv);
       playSFX(800, 0.2, 0.5);
       document.getElementById('lobbyStatus').innerHTML = `<span style="font-size:28px; color:#44ffaa;">LAUNCHING!</span>`;
-      setTimeout(() => startGame('multi'), 500); // Mulai persis bersamaan
+      setTimeout(() => startGame('multi'), 500);
     }
   }, 1000);
 }
@@ -510,86 +495,55 @@ function broadcastAction(action, data) {
 }
 
 function handleNetworkAction(action, data) {
-  if (action === 'start_countdown') {
-    triggerMultiplayerCountdown();
-  }
-  else if (action === 'move') {
-    player2.targetX = data.x;
-    player2.active = true;
-  } 
+  if (action === 'start_countdown') triggerMultiplayerCountdown();
+  else if (action === 'move') { player2.targetX = data.x; player2.active = true; } 
   else if (action === 'shoot') {
-    data.bData.forEach(bd => {
-      bullets.push({x: player2.x + bd.x, y: player2.y + bd.y, vy: bd.vy, vx: bd.vx, col: bd.col, isP2: true});
-    });
+    data.bData.forEach(bd => bullets.push({x: player2.x + bd.x, y: player2.y + bd.y, vy: bd.vy, vx: bd.vx, col: bd.col, isP2: true}));
     playSFX(850, 0.03, 0.05); 
   } 
   else if (action === 'e_shoot') {
-    eBullets.push({x: data.x, y: data.y, vy: data.vy, vx: data.vx});
-    playSFX(300, 0.02, 0.1);
+    eBullets.push({x: data.x, y: data.y, vy: data.vy, vx: data.vx}); playSFX(300, 0.02, 0.1);
   }
   else if (action === 'boss_shoot') {
-    data.bullets.forEach(b => eBullets.push(b));
-    playSFX(250, 0.05, 0.1);
+    data.bullets.forEach(b => eBullets.push(b)); playSFX(250, 0.05, 0.1);
   }
-  else if (action === 'pause') {
-    state = 'paused'; togglePanel('panelPause');
-  } 
-  else if (action === 'resume') {
-    triggerResume(false); 
-  } 
-  else if (action === 'chat_msg') {
-    appendChatMessage(data.sender, data.text);
-    playSFX(1200, 0.02, 0.1, 'sine');
-  } 
+  else if (action === 'pause') { state = 'paused'; togglePanel('panelPause'); } 
+  else if (action === 'resume') triggerResume(false); 
+  else if (action === 'chat_msg') { appendChatMessage(data.sender, data.text); playSFX(1200, 0.02, 0.1, 'sine'); } 
+  else if (action === 'spawn_powerup') { powerups.push(data); }
+  else if (action === 'collect_powerup') {
+    let idx = powerups.findIndex(p => p.id === data.id);
+    if (idx !== -1) powerups.splice(idx, 1);
+    if (data.sender !== playerName) applyPowerupEffect(data.type, false);
+  }
   else if (action === 'player_hit') {
-    lives = data.lives;
-    player2.invincible = 60; player2.shake = 15;
+    lives = data.lives; player2.invincible = 60; player2.shake = 15;
     spawnParts(player2.x, player2.y, '#44ffaa', 30, true); playSFX(150, 0.3, 0.5);
     updateHUD(); if(lives <= 0) executeGameOverLogic();
   } 
-  else if (action === 'enemy_hit') {
-    let e = enemies.find(en => en.id === data.id);
-    if(e) e.hp = data.hp;
-  }
+  else if (action === 'enemy_hit') { let e = enemies.find(en => en.id === data.id); if(e) e.hp = data.hp; }
   else if (action === 'boss_hit') {
-    if(boss) boss.hp = data.hp;
-    spawnParts(data.x, data.y, '#ffaa00', 5);
-    playSFX(500, 0.05, 0.05);
+    if(boss) boss.hp = data.hp; spawnParts(data.x, data.y, '#ffaa00', 5); playSFX(500, 0.05, 0.05);
   }
   else if (action === 'enemy_killed') {
     let idx = enemies.findIndex(en => en.id === data.id);
-    if (idx !== -1) {
-      spawnParts(data.x, data.y, data.color, 15);
-      playSFX(400, 0.05, 0.1);
-      enemies.splice(idx, 1);
-    }
+    if (idx !== -1) { spawnParts(data.x, data.y, data.color, 15); playSFX(400, 0.05, 0.1); enemies.splice(idx, 1); }
   }
   else if (action === 'force_state') {
     state = data.state;
-    if (state === 'levelclear') {
-      levelClearT = 0;
-      if (bossActive) { bossActive = false; boss = null; }
-      enemies.length = 0;
-    }
+    if (state === 'levelclear') { levelClearT = 0; if (bossActive) { bossActive = false; boss = null; } enemies.length = 0; }
   } 
   else if (action === 'start_level') {
-    level = data.level;
-    player.y = H-160;
-    if (data.isBoss) spawnBoss(); else spawnEnemies();
-    state = 'playing'; levelClearT = 0;
-    showAlert(`SECTOR ${level} REACHED`, false);
+    level = data.level; player.y = H-160;
+    if (data.isBoss) spawnBoss(data.bType); else spawnEnemies();
+    state = 'playing'; levelClearT = 0; showAlert(`SECTOR ${level} REACHED`, false);
   }
   else if (action === 'sync_state' && !amIHost) {
-    score = data.score;
-    if (boss && data.bossHp > 0) boss.hp = data.bossHp;
-    
+    score = data.score; if (boss && data.bossHp > 0) boss.hp = data.bossHp;
     const hostIds = data.enemyHps.map(e => e.id);
     for(let i = enemies.length - 1; i >= 0; i--) {
-      if(!hostIds.includes(enemies[i].id)) { enemies.splice(i, 1); }
-      else {
-        let he = data.enemyHps.find(e => e.id === enemies[i].id);
-        if(he) enemies[i].hp = he.hp;
-      }
+      if(!hostIds.includes(enemies[i].id)) enemies.splice(i, 1);
+      else { let he = data.enemyHps.find(e => e.id === enemies[i].id); if(he) enemies[i].hp = he.hp; }
     }
   }
 }
@@ -606,19 +560,20 @@ function startGame(mode) {
   startMusic(bgmGame); 
   
   score=0; lives=3; level=1; frame=0;
-  player.speed = baseSpeed * sensitivity; // Terapkan sensitivitas
+  player.speed = baseSpeed * sensitivity;
   player.x=W/2; player.y=H+100; player.invincible=0; player.targetX = W/2; player.shake=0;
   player2.active = (mode === 'multi'); player2.x = W/2; player2.targetX = W/2; player2.shake=0; player2.invincible=0;
-  bullets.length=0; eBullets.length=0; parts.length=0; shockwaves.length=0; bossActive=false;
-  document.getElementById('chatLog').innerHTML = ''; 
+  
+  bullets.length=0; eBullets.length=0; enemies.length=0; parts.length=0; shockwaves.length=0; powerups.length=0;
+  laserTimer = 0; p2LaserTimer = 0;
+  bossActive=false; boss=null; document.getElementById('chatLog').innerHTML = ''; 
   
   initStars(); state = 'intro';
 }
 
 function triggerPause() {
   if(state !== 'playing') return;
-  state = 'paused'; togglePanel('panelPause'); playSFX(300, 0.1, 0.2);
-  broadcastAction('pause', {});
+  state = 'paused'; togglePanel('panelPause'); playSFX(300, 0.1, 0.2); broadcastAction('pause', {});
 }
 
 function triggerResume(sendNet = true) {
@@ -637,12 +592,10 @@ function quitGame() {
 }
 
 function executeGameOverLogic() {
-  if (state === 'gameover') return; // Prevent double firing
+  if (state === 'gameover') return; 
   state = 'gameover'; bgmGame.pause();
   spawnParts(player.x,player.y,'#ff4466',50, true); playSFX(100, 0.5, 1);
   submitScoreToDB(score); 
-  
-  // Tunggu 4 detik di layar Canvas Game Over lalu quit
   setTimeout(() => { quitGame(); }, 4000);
 }
 
@@ -660,23 +613,50 @@ function spawnParts(x, y, col, n=15, isBig=false){
   shockwaves.push({x, y, r: 5, maxR: isBig ? 80 : 35, alpha: 1, col, speed: isBig ? 4 : 2});
 }
 
+function spawnPowerUpDrop(x, y) {
+  if (Math.random() > 0.15) return; // 15% Chance
+  let pType = Math.random() < 0.5 ? 'laser' : 'life';
+  let p = { id: Date.now() + Math.random(), x: x, y: y, type: pType, vy: 2 };
+  powerups.push(p);
+  if (gameMode === 'multi') broadcastAction('spawn_powerup', p);
+}
+
+function applyPowerupEffect(type, isMe) {
+  if (type === 'life') {
+    if (isMe) { lives++; updateHUD(); playSFX(600, 0.2, 0.3, 'sine'); spawnParts(player.x, player.y, '#44ffaa', 20); }
+    else { spawnParts(player2.x, player2.y, '#44ffaa', 20); playSFX(600, 0.2, 0.3, 'sine'); }
+  } else if (type === 'laser') {
+    if (isMe) { laserTimer = 180; playSFX(1000, 0.1, 3.0, 'sawtooth'); }
+    else { p2LaserTimer = 180; playSFX(1000, 0.1, 3.0, 'sawtooth'); }
+  }
+}
+
 const EC=['#ff4466','#ff6600','#aa44ff','#44ffaa','#ffcc00'];
 function spawnEnemies(){
   enemies.length=0; eBullets.length=0;
-  const rows=Math.min(2+Math.floor(level/2), 6), cols=Math.min(5+level, 9);
-  const startX = W/2 - ((cols-1)*45)/2;
+  const rows = Math.min(2 + Math.floor(level/2), 6);
+  const cols = Math.min(4 + Math.floor(level/2), 8);
+  // Lebar gap dinamis agar tidak nabrak layar
+  const gap = Math.min(45, (W - 60) / Math.max(1, cols - 1)); 
+  const startX = W/2 - ((cols-1)*gap)/2;
+  
   for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    // V11: 3 Tipe Musuh (0: Normal, 1: Tank, 2: Cepat)
+    let type = Math.floor(Math.random() * Math.min(3, 1 + Math.floor(level/3)));
+    let hp = (level > 4 ? 2 : 1) + (type === 1 ? 2 : 0);
+    
     enemies.push({
-      id: `${r}_${c}`, 
-      x:startX+c*45, y:-50-r*40, targetY:40+r*40, hp:(level>4)?2:1, 
-      color:EC[(r+level)%EC.length], dir:1, t: c*0.5
+      id: `${r}_${c}_${level}`, 
+      x:startX+c*gap, y:-50-r*40, targetY:40+r*40, 
+      hp:hp, type: type, color:EC[(r+level)%EC.length], dir:1, t: c*0.5
     });
   }
 }
 
-function spawnBoss(){
+function spawnBoss(forceType = -1){
   bossActive=true;
-  boss={x:W/2, y:-100, hp:30+level*5, maxHp:30+level*5, dx:2.5, dir:1, t:0, st:0};
+  let bType = forceType !== -1 ? forceType : Math.floor(Math.random() * 3);
+  boss={x:W/2, y:-100, hp:30+level*5, maxHp:30+level*5, dx:2.5, dir:1, t:0, st:0, type: bType};
 }
 
 // --- Update Logic ---
@@ -689,9 +669,7 @@ function update() {
     if(s.y>H){ s.y=0; s.x=Math.random()*W; }
   });
 
-  if(state === 'resuming') {
-    resumeTimer--; if(resumeTimer <= 0) state = 'playing'; return;
-  }
+  if(state === 'resuming') { resumeTimer--; if(resumeTimer <= 0) state = 'playing'; return; }
 
   if(state === 'intro') {
     player.y -= 4; 
@@ -710,12 +688,14 @@ function update() {
   if(state === 'levelclear') {
     if (levelClearT < 100) { levelClearT++; player.y -= 2; }
     updateParticles();
+    
     if(levelClearT >= 100 && (gameMode === 'solo' || amIHost)) {
-      player.y = H-160;
-      level++;
-      if(level%5===0) spawnBoss(); else spawnEnemies();
+      player.y = H-160; level++;
+      let isBoss = (level%5===0);
+      let bType = Math.floor(Math.random() * 3);
+      if(isBoss) spawnBoss(bType); else spawnEnemies();
       state='playing'; levelClearT=0; showAlert(`SECTOR ${level} REACHED`, false);
-      if(gameMode === 'multi') broadcastAction('start_level', { level: level, isBoss: (level%5===0) });
+      if(gameMode === 'multi') broadcastAction('start_level', { level: level, isBoss: isBoss, bType: bType });
     }
     return; 
   }
@@ -729,25 +709,74 @@ function update() {
   if(player2.active) { player2.x += (player2.targetX - player2.x) * 0.5; }
 
   if (gameMode === 'multi' && amIHost && frame % 10 === 0) { 
-    broadcastAction('sync_state', {
-      score: score, bossHp: boss ? boss.hp : 0,
-      enemyHps: enemies.map(e => ({id: e.id, hp: e.hp}))
-    });
+    broadcastAction('sync_state', { score: score, bossHp: boss ? boss.hp : 0, enemyHps: enemies.map(e => ({id: e.id, hp: e.hp})) });
   }
 
-  // Shooting
+  // --- LASER UPDATE ---
+  if (laserTimer > 0) laserTimer--;
+  if (p2LaserTimer > 0) p2LaserTimer--;
+
+  // Laser Damage Detection (Diatur Host)
+  if (gameMode === 'solo' || amIHost) {
+    let activeLasers = [];
+    if (laserTimer > 0) activeLasers.push(player.x);
+    if (gameMode === 'multi' && p2LaserTimer > 0 && player2.active) activeLasers.push(player2.x);
+
+    if (activeLasers.length > 0) {
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        let e = enemies[j]; let hitL = false;
+        for (let lx of activeLasers) { if (Math.abs(e.x - lx) < 30) hitL = true; }
+        
+        if (hitL) {
+          e.hp -= 0.5; // Damage per frame
+          if(frame % 5 === 0) spawnParts(e.x, e.y, '#fff', 2);
+          if (e.hp <= 0) {
+            spawnParts(e.x, e.y, e.color, 15); score += 20; playSFX(400, 0.05, 0.1);
+            spawnPowerUpDrop(e.x, e.y);
+            if(gameMode === 'multi') broadcastAction('enemy_killed', {id: e.id, x:e.x, y:e.y, color:e.color});
+            enemies.splice(j, 1);
+          } else if (gameMode === 'multi') broadcastAction('enemy_hit', {id: e.id, hp: e.hp});
+        }
+      }
+      
+      if (bossActive && boss) {
+        let hitL = false;
+        for (let lx of activeLasers) { if (Math.abs(boss.x - lx) < 50) hitL = true; }
+        if (hitL) {
+          boss.hp -= 0.5; spawnParts(boss.x, boss.y, '#ffaa00', 2);
+          if(gameMode === 'multi' && frame%5===0) broadcastAction('boss_hit', {hp: boss.hp, x: boss.x, y: boss.y});
+          if (boss.hp <= 0) {
+             spawnParts(boss.x, boss.y, '#ff4466', 80, true); score+=1000; bossActive=false; boss=null; state='levelclear'; levelClearT=0; playSFX(100, 0.5, 1);
+             if(gameMode === 'multi') broadcastAction('force_state', {state: 'levelclear'});
+          }
+        }
+      }
+    }
+  }
+
+  // --- POWERUP LOGIC ---
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    let p = powerups[i]; p.y += p.vy;
+    if (p.y > H + 20) { powerups.splice(i, 1); continue; }
+    
+    // Player Self Check
+    if (Math.abs(p.x - player.x) < 25 && Math.abs(p.y - player.y) < 25) {
+      applyPowerupEffect(p.type, true);
+      if (gameMode === 'multi') broadcastAction('collect_powerup', {id: p.id, type: p.type, sender: playerName});
+      powerups.splice(i, 1); continue;
+    }
+  }
+
+  // Shooting Normal
   if(shotCD <= 0) {
     let bCol = level >= 5 ? '#ffaa00' : '#00f0ff';
     let localBullets = [];
-    
     if(level < 3) localBullets.push({x: 0, y: -20, vy: -12, vx: 0, col: bCol});
     else if (level < 5) {
-      localBullets.push({x: -8, y: -20, vy: -12, vx: 0, col: bCol});
-      localBullets.push({x: 8, y: -20, vy: -12, vx: 0, col: bCol});
+      localBullets.push({x: -8, y: -20, vy: -12, vx: 0, col: bCol}); localBullets.push({x: 8, y: -20, vy: -12, vx: 0, col: bCol});
     } else {
       localBullets.push({x: 0, y: -25, vy: -13, vx: 0, col: bCol});
-      localBullets.push({x: -15, y: -15, vy: -11, vx: -1, col: '#ff4466'});
-      localBullets.push({x: 15, y: -15, vy: -11, vx: 1, col: '#ff4466'});
+      localBullets.push({x: -15, y: -15, vy: -11, vx: -1, col: '#ff4466'}); localBullets.push({x: 15, y: -15, vy: -11, vx: 1, col: '#ff4466'});
     }
 
     localBullets.forEach(b => bullets.push({x: player.x + b.x, y: player.y + b.y, vy: b.vy, vx: b.vx, col: b.col}));
@@ -765,7 +794,13 @@ function update() {
     let edge = false;
     enemies.forEach(e => {
       if(e.y < e.targetY) e.y += 2;
-      else { e.x += spd * e.dir; e.t += 0.08; if(e.x > W-20 || e.x < 20) edge = true; }
+      else { 
+        let moveSpd = e.type === 2 ? spd * 1.5 : (e.type === 1 ? spd * 0.7 : spd);
+        e.x += moveSpd * e.dir; e.t += 0.08; 
+        
+        // V11 FIX: Hanya pantul jika nabrak DENGAN arah yang sesuai (Bebas Bug Sangkut!)
+        if((e.x > W-25 && e.dir > 0) || (e.x < 25 && e.dir < 0)) edge = true; 
+      }
     });
     if(edge) enemies.forEach(e => { e.dir *= -1; e.y += Math.min(15, 5+level); });
 
@@ -789,19 +824,30 @@ function update() {
       }
     }
   } else if (boss) {
-    boss.t += 0.04; boss.x += boss.dx * boss.dir;
-    if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
-    if (boss.y < 80) boss.y += 2; 
-    else boss.y = 80 + Math.sin(boss.t)*30; 
+    boss.t += 0.04; 
+    
+    // Boss Type Variations
+    if (boss.type === 0) { // Classic
+      boss.x += boss.dx * boss.dir;
+      if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
+      boss.y = 80 + Math.sin(boss.t)*30; 
+    } else if (boss.type === 1) { // Charger
+      boss.x += boss.dx * 1.2 * boss.dir;
+      if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
+      boss.y = 80 + Math.sin(boss.t * 2)*60; // Deep dive
+    } else if (boss.type === 2) { // Teleport/Jitter
+      boss.x += boss.dx * boss.dir;
+      if(boss.x > W-70 || boss.x < 70) boss.dir *= -1;
+      if(frame % 90 === 0) boss.dir *= -1; // Acak arah
+      boss.y = 80 + Math.cos(boss.t)*20; 
+    }
 
     if (gameMode === 'solo' || amIHost) {
       boss.st++;
       if(boss.st >= Math.max(15, 40-level*1.5)) {
-        boss.st=0;
-        let bSet = [];
+        boss.st=0; let bSet = [];
         for(let a=-2; a<=2; a+=2) bSet.push({x:boss.x+a*15, y:boss.y+40, vy:5+level*0.2, vx:a*1.2});
-        bSet.forEach(b => eBullets.push(b));
-        playSFX(250, 0.05, 0.1);
+        bSet.forEach(b => eBullets.push(b)); playSFX(250, 0.05, 0.1);
         if(gameMode === 'multi') broadcastAction('boss_shoot', {bullets: bSet});
       }
     }
@@ -810,9 +856,7 @@ function update() {
   for(let i=eBullets.length-1; i>=0; i--) {
     let b = eBullets[i]; b.y += b.vy; if(b.vx) b.x += b.vx;
     if(b.y > H+10) { eBullets.splice(i,1); continue; }
-    if(player.invincible<=0 && Math.abs(b.x-player.x)<14 && Math.abs(b.y-player.y)<14){
-      hitPlayer(); eBullets.splice(i,1);
-    }
+    if(player.invincible<=0 && Math.abs(b.x-player.x)<14 && Math.abs(b.y-player.y)<14){ hitPlayer(); eBullets.splice(i,1); }
   }
 
   for(let i=bullets.length-1; i>=0; i--) {
@@ -820,15 +864,11 @@ function update() {
     
     if(bossActive && boss && Math.abs(b.x-boss.x)<50 && Math.abs(b.y-boss.y)<35){
       hit=true; spawnParts(b.x, b.y, '#ffaa00', 5); playSFX(500, 0.05, 0.05);
-      
       if(gameMode === 'solo' || amIHost) {
-        boss.hp--;
-        score += 20;
+        boss.hp--; score += 20;
         if(gameMode === 'multi') broadcastAction('boss_hit', {hp: boss.hp, x: b.x, y: b.y});
-        
         if(boss.hp <= 0) {
-          spawnParts(boss.x, boss.y, '#ff4466', 80, true); 
-          score+=1000; bossActive=false; boss=null; state='levelclear'; levelClearT=0; playSFX(100, 0.5, 1);
+          spawnParts(boss.x, boss.y, '#ff4466', 80, true); score+=1000; bossActive=false; boss=null; state='levelclear'; levelClearT=0; playSFX(100, 0.5, 1);
           if(gameMode === 'multi') broadcastAction('force_state', {state: 'levelclear'});
         }
       }
@@ -838,12 +878,11 @@ function update() {
       let e = enemies[j];
       if(Math.abs(b.x-e.x)<18 && Math.abs(b.y-e.y)<15) {
         hit = true; spawnParts(e.x, e.y, '#fff', 5);
-        
         if (gameMode === 'solo' || amIHost) {
           e.hp--;
           if(e.hp <= 0) {
-            spawnParts(e.x, e.y, e.color, 15); 
-            score += 20; playSFX(400, 0.05, 0.1);
+            spawnParts(e.x, e.y, e.color, 15); score += 20; playSFX(400, 0.05, 0.1);
+            spawnPowerUpDrop(e.x, e.y); // Drop Item System
             if(gameMode === 'multi') broadcastAction('enemy_killed', {id: e.id, x:e.x, y:e.y, color:e.color});
             enemies.splice(j,1); 
           } else {
@@ -854,15 +893,13 @@ function update() {
     }
     if(hit) bullets.splice(i,1);
   }
-
   updateParticles();
 }
 
 function hitPlayer() {
   lives--; player.invincible = 60; player.shake = 15; 
   spawnParts(player.x, player.y, '#00f0ff', 30, true); playSFX(150, 0.3, 0.5);
-  updateHUD(); 
-  broadcastAction('player_hit', {lives: lives}); 
+  updateHUD(); broadcastAction('player_hit', {lives: lives}); 
   if(lives <= 0) executeGameOverLogic();
 }
 
@@ -878,6 +915,14 @@ function updateParticles() {
 }
 
 // --- Vector Render ---
+function drawLaser(x, y, color, shadowCol) {
+  let a = Math.random() * 0.4 + 0.6;
+  ctx.fillStyle = color; ctx.shadowColor = shadowCol; ctx.shadowBlur = 20;
+  ctx.fillRect(x - 20, 0, 40, y);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 5, 0, 10, y); // Inner core
+  ctx.shadowBlur = 0;
+}
+
 function draw() {
   ctx.clearRect(0,0,W,H);
   
@@ -887,6 +932,10 @@ function draw() {
   });
 
   if(state === 'auth' || state === 'menu' || state === 'lobby') return;
+
+  // Draw Lasers
+  if (laserTimer > 0 && state !== 'gameover') drawLaser(player.x, player.y, `rgba(0, 240, 255, ${Math.random()*0.4+0.4})`, '#00f0ff');
+  if (p2LaserTimer > 0 && player2.active && state !== 'gameover') drawLaser(player2.x, player2.y, `rgba(68, 255, 170, ${Math.random()*0.4+0.4})`, '#44ffaa');
 
   ctx.lineWidth = 2;
   shockwaves.forEach(sw => {
@@ -900,6 +949,16 @@ function draw() {
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r*p.life, 0, 6.28); ctx.fill();
   });
   ctx.globalAlpha = 1;
+
+  powerups.forEach(p => {
+    ctx.save(); ctx.translate(p.x, p.y);
+    let isLife = p.type === 'life';
+    ctx.fillStyle = isLife ? '#44ffaa' : '#ffaa00';
+    ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15;
+    ctx.font = '20px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(isLife ? '♥' : '⚡', 0, 0);
+    ctx.restore();
+  });
 
   bullets.forEach(b => {
     ctx.shadowColor = b.col; ctx.shadowBlur = 10; ctx.fillStyle = b.col;
@@ -915,15 +974,20 @@ function draw() {
       ctx.save(); ctx.translate(e.x, e.y);
       let s = 0.9 + Math.sin(e.t)*0.1; ctx.scale(s, s);
       ctx.shadowColor = e.color; ctx.shadowBlur = 10; ctx.strokeStyle = e.color; ctx.fillStyle = e.color+'33';
-      ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(-12,-4); ctx.lineTo(-15,8); ctx.lineTo(-6,12); ctx.lineTo(6,12); ctx.lineTo(15,8); ctx.lineTo(12,-4); ctx.closePath();
+      ctx.beginPath(); 
+      if (e.type === 1) { ctx.rect(-12, -12, 24, 24); } // Tank
+      else if (e.type === 2) { ctx.moveTo(0, 15); ctx.lineTo(-12, -10); ctx.lineTo(12, -10); ctx.closePath(); } // Interceptor
+      else { ctx.moveTo(0,-12); ctx.lineTo(-12,-4); ctx.lineTo(-15,8); ctx.lineTo(-6,12); ctx.lineTo(6,12); ctx.lineTo(15,8); ctx.lineTo(12,-4); ctx.closePath(); } // Normal
       ctx.fill(); ctx.stroke();
-      ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(-6,3,3,0,6.28); ctx.fill(); ctx.beginPath(); ctx.arc(6,3,3,0,6.28); ctx.fill();
+      ctx.fillStyle = e.color; 
+      if (e.type === 1) { ctx.fillRect(-4, -4, 8, 8); } else { ctx.beginPath(); ctx.arc(-6,3,3,0,6.28); ctx.fill(); ctx.beginPath(); ctx.arc(6,3,3,0,6.28); ctx.fill(); }
       ctx.restore();
     });
   } else if(boss) {
     ctx.save(); ctx.translate(boss.x, boss.y);
     let s = 0.95 + Math.sin(boss.t*2)*0.05; ctx.scale(s, s);
-    ctx.shadowColor='#ff4466'; ctx.shadowBlur=25; ctx.strokeStyle='#ff4466'; ctx.fillStyle='#220011'; ctx.lineWidth=3;
+    let bCol = boss.type === 1 ? '#ff8800' : (boss.type === 2 ? '#aa44ff' : '#ff4466');
+    ctx.shadowColor=bCol; ctx.shadowBlur=25; ctx.strokeStyle=bCol; ctx.fillStyle='#220011'; ctx.lineWidth=3;
     ctx.beginPath(); ctx.moveTo(0,-35); ctx.lineTo(-45,-15); ctx.lineTo(-50,25); ctx.lineTo(-25,35); ctx.lineTo(25,35); ctx.lineTo(50,25); ctx.lineTo(45,-15); ctx.closePath();
     ctx.fill(); ctx.stroke();
     
@@ -948,7 +1012,6 @@ function draw() {
     drawShip(player.x + sx, player.y + sy, player.invincible>0, false, playerName);
   }
 
-  // NEW: Game Over Screen in Canvas
   if(state === 'gameover') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle = '#ff4466'; ctx.font = 'bold 50px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1026,13 +1089,11 @@ document.getElementById('btnPause').addEventListener('click', () => { if(state =
 
 document.addEventListener('keydown', e => {
   if (document.activeElement === document.getElementById('chatInput') || document.activeElement === document.getElementById('inputName')) return;
-  
   if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
   if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
 });
 document.addEventListener('keyup', e => {
   if (document.activeElement === document.getElementById('chatInput') || document.activeElement === document.getElementById('inputName')) return;
-  
   if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
   if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false;
 });
