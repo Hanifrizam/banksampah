@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - Bank Sampah</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 font-sans min-h-screen">
+
+    <nav class="bg-slate-800 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">🔧</span>
+                <h1 class="font-bold text-lg">Administrator Panel</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="bg-slate-700 px-3 py-1 rounded-full text-xs flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <span id="activeUserCount">0</span> Online
+                </div>
+                <button onclick="logout()" class="text-red-400 hover:text-red-200 text-sm font-bold">LOGOUT</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4">
+        
+        <div class="lg:col-span-2 space-y-6">
+            
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-600">
+                <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    📥 Input Setoran Baru
+                </h2>
+                
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Nama Nasabah</label>
+                        <select id="userSelect" class="w-full border border-gray-300 p-3 rounded-lg bg-gray-50 focus:border-blue-500 outline-none">
+                            <option value="">Sedang memuat data...</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Jenis Sampah (Sesuai Excel)</label>
+                            <select id="wasteTypeSelect" onchange="calculatePreview()" class="w-full border border-gray-300 p-3 rounded-lg focus:border-blue-500 outline-none">
+                                </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Berat Sampah (Kg)</label>
+                            <div class="relative">
+                                <input type="number" id="weightInput" oninput="calculatePreview()" step="0.1" class="w-full border border-gray-300 p-3 rounded-lg focus:border-blue-500 outline-none pl-4" placeholder="0.0">
+                                <span class="absolute right-4 top-3 text-gray-400 text-sm font-bold">Kg</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-50 p-5 rounded-lg flex justify-between items-center border border-blue-100">
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1">Estimasi Rupiah Didapat</p>
+                            <p class="text-xs text-blue-400" id="priceDetailInfo">0 kg x Rp 0</p>
+                        </div>
+                        <p class="text-3xl font-bold text-blue-700" id="pricePreview">Rp 0</p>
+                    </div>
+
+                    <button onclick="submitTransaction()" class="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 shadow-lg transition transform active:scale-95">
+                        SIMPAN DATA & UPDATE SALDO
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 class="font-bold text-lg text-gray-800 mb-4">🏆 Top Nasabah (Saldo Tertinggi)</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+                            <tr>
+                                <th class="p-3">Peringkat</th>
+                                <th class="p-3">Nama Nasabah</th>
+                                <th class="p-3 text-right">Total Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardBody" class="text-sm text-gray-700">
+                            <tr><td colspan="3" class="p-4 text-center">Memuat...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 class="font-bold text-gray-800 mb-4 text-sm uppercase">📋 Harga Hari Ini (Per Kg)</h3>
+                <ul id="priceList" class="space-y-2 text-sm max-h-60 overflow-y-auto">
+                    </ul>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-orange-400">
+                <h3 class="font-bold text-gray-800 mb-4 text-sm uppercase">⚙️ Koreksi Saldo Manual</h3>
+                <input type="text" placeholder="Email / ID User" class="w-full border p-2 rounded mb-3 text-sm">
+                <input type="number" placeholder="Nominal (+/-)" class="w-full border p-2 rounded mb-3 text-sm">
+                <button class="w-full bg-orange-500 text-white py-2 rounded text-sm hover:bg-orange-600 font-bold">Update Saldo</button>
+                <p class="text-xs text-gray-400 mt-2">*Gunakan minus (-) untuk mengurangi poin.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. KONFIGURASI SUPABASE (GANTI INI DENGAN DATA ANDA) ---
+        const supabaseUrl = 'MASUKKAN_URL_SUPABASE_ANDA_DISINI';
+        const supabaseKey = 'MASUKKAN_ANON_KEY_SUPABASE_ANDA_DISINI';
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+        let wasteTypesCache = [];
+
+        // --- 2. INIT HALAMAN ADMIN ---
+        // Dijalankan otomatis saat halaman dibuka
+        (async function init() {
+            // Cek Session (Apakah admin yang login?)
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                alert("Anda harus login dulu!");
+                window.location.href = 'index.html';
+                return;
+            }
+
+            loadUsers();
+            loadWasteTypes();
+            loadLeaderboard();
+            setupRealtimePresence();
+        })();
+
+        // --- 3. FUNGSI-FUNGSI UTAMA ---
+
+        async function loadUsers() {
+            // Ambil semua user dengan role 'user'
+            const { data: users } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('role', 'user')
+                .order('full_name', { ascending: true });
+
+            const select = document.getElementById('userSelect');
+            select.innerHTML = '<option value="">-- Pilih Nasabah --</option>';
+            users.forEach(u => {
+                select.innerHTML += `<option value="${u.id}">${u.full_name}</option>`;
+            });
+        }
+
+        async function loadWasteTypes() {
+            // Ambil Data Harga (Sesuai Excel Anda yang sudah diimpor ke DB)
+            const { data: wastes } = await supabase.from('waste_types').select('*');
+            wasteTypesCache = wastes; // Simpan di memori browser
+
+            const select = document.getElementById('wasteTypeSelect');
+            const list = document.getElementById('priceList');
+            
+            select.innerHTML = ''; 
+            list.innerHTML = '';
+
+            wastes.forEach(w => {
+                // Isi Dropdown
+                select.innerHTML += `<option value="${w.id}" data-price="${w.price_per_kg}">${w.name}</option>`;
+                
+                // Isi List Harga di Sidebar
+                list.innerHTML += `
+                    <li class="flex justify-between border-b pb-1 border-dashed">
+                        <span>${w.name}</span>
+                        <span class="font-bold text-green-600">Rp ${w.price_per_kg}</span>
+                    </li>
+                `;
+            });
+            calculatePreview(); // Hitung default awal
+        }
+
+        function calculatePreview() {
+            const weight = parseFloat(document.getElementById('weightInput').value) || 0;
+            const select = document.getElementById('wasteTypeSelect');
+            const price = parseFloat(select.options[select.selectedIndex]?.getAttribute('data-price')) || 0;
+            const wasteName = select.options[select.selectedIndex]?.text || '';
+            
+            const total = weight * price;
+            
+            document.getElementById('pricePreview').innerText = formatRupiah(total);
+            document.getElementById('priceDetailInfo').innerText = `${weight} kg x Rp ${price} (${wasteName})`;
+        }
+
+        async function submitTransaction() {
+            const userId = document.getElementById('userSelect').value;
+            const wasteTypeId = document.getElementById('wasteTypeSelect').value;
+            const weight = parseFloat(document.getElementById('weightInput').value);
+            
+            if(!userId || !weight) return alert("Harap lengkapi Nama Nasabah dan Berat!");
+
+            // Hitung Ulang Total (Safety)
+            const waste = wasteTypesCache.find(w => w.id == wasteTypeId);
+            const totalValue = weight * waste.price_per_kg;
+
+            // 1. Simpan Transaksi ke Tabel 'transactions'
+            const { error: trxError } = await supabase.from('transactions').insert({
+                user_id: userId,
+                waste_type_id: wasteTypeId,
+                weight: weight,
+                total_value: totalValue
+            });
+
+            if (trxError) return alert("Error Simpan Transaksi: " + trxError.message);
+
+            // 2. Update Saldo User di Tabel 'profiles'
+            // Ambil saldo lama dulu
+            const { data: user } = await supabase.from('profiles').select('balance').eq('id', userId).single();
+            const newBalance = (user.balance || 0) + totalValue;
+            
+            const { error: updateError } = await supabase.from('profiles')
+                .update({ balance: newBalance })
+                .eq('id', userId);
+
+            if (updateError) {
+                alert("Transaksi tersimpan TAPI saldo gagal update. Hubungi developer.");
+            } else {
+                alert(`✅ BERHASIL!\nSaldo bertambah: ${formatRupiah(totalValue)}\nTotal Saldo Nasabah: ${formatRupiah(newBalance)}`);
+                
+                // Reset Form
+                document.getElementById('weightInput').value = '';
+                document.getElementById('pricePreview').innerText = 'Rp 0';
+                loadLeaderboard(); // Refresh data tabel bawah
+            }
+        }
+
+        async function loadLeaderboard() {
+            // Mengambil 5 user dengan saldo tertinggi
+            const { data } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('balance', {ascending: false})
+                .limit(5);
+
+            const tbody = document.getElementById('leaderboardBody');
+            tbody.innerHTML = '';
+            
+            data.forEach((user, index) => {
+                let rankIcon = index === 0 ? '🥇' : (index === 1 ? '🥈' : (index === 2 ? '🥉' : `#${index+1}`));
+                tbody.innerHTML += `
+                    <tr class="border-b border-gray-100 hover:bg-gray-50">
+                        <td class="p-3 font-bold">${rankIcon}</td>
+                        <td class="p-3">${user.full_name}</td>
+                        <td class="p-3 text-right font-mono font-bold text-green-600">${formatRupiah(user.balance)}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function setupRealtimePresence() {
+            const channel = supabase.channel('online-users');
+            channel.on('presence', { event: 'sync' }, () => {
+                const count = Object.keys(channel.presenceState()).length;
+                document.getElementById('activeUserCount').innerText = count;
+            }).subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await channel.track({ online_at: new Date().toISOString() });
+                }
+            });
+        }
+
+        async function logout() {
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+        }
+
+        function formatRupiah(angka) {
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank Sampah Digital 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+
+    <nav class="bg-green-700 p-4 text-white flex justify-between items-center shadow-lg sticky top-0 z-50">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl">♻️</span>
+            <h1 class="text-xl font-bold">Bank Sampah Digital</h1>
+        </div>
+        <div id="navButtons">
+            <button onclick="showLoginModal()" class="bg-white text-green-700 px-5 py-2 rounded-full font-bold hover:bg-green-50 transition shadow-md">
+                Masuk / Daftar
+            </button>
+        </div>
+    </nav>
+
+    <div id="landingPage" class="flex flex-col items-center justify-center min-h-screen text-center p-6 -mt-20">
+        <h2 class="text-4xl md:text-5xl font-bold text-gray-800 mb-6">
+            Ubah Sampah Jadi <span class="text-green-600">Cuan!</span>
+        </h2>
+        <p class="text-lg md:text-xl text-gray-600 mb-10 max-w-2xl">
+            Sistem manajemen sampah modern. Setorkan sampah, pantau timbangan secara realtime, 
+            dan tukarkan poin Anda dengan Token Listrik, Pulsa, atau Saldo E-Wallet.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
+            <div class="bg-white p-8 rounded-xl shadow-md hover:shadow-xl transition transform hover:-translate-y-1">
+                <div class="text-4xl mb-4">⚖️</div>
+                <h3 class="text-xl font-bold mb-2">Timbang Digital</h3>
+                <p class="text-gray-500 text-sm">Data timbangan diinput admin dan masuk otomatis ke dashboard Anda.</p>
+            </div>
+            <div class="bg-white p-8 rounded-xl shadow-md hover:shadow-xl transition transform hover:-translate-y-1">
+                <div class="text-4xl mb-4">📊</div>
+                <h3 class="text-xl font-bold mb-2">Pantau Saldo</h3>
+                <p class="text-gray-500 text-sm">Lihat grafik kenaikan saldo hasil penjualan sampah Anda.</p>
+            </div>
+            <div class="bg-white p-8 rounded-xl shadow-md hover:shadow-xl transition transform hover:-translate-y-1">
+                <div class="text-4xl mb-4">⚡</div>
+                <h3 class="text-xl font-bold mb-2">Tukar Langsung</h3>
+                <p class="text-gray-500 text-sm">Tukar saldo dengan Token Listrik, PDAM, atau Pulsa HP.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="userDashboard" class="hidden p-4 md:p-8 max-w-5xl mx-auto min-h-screen">
+        <div class="bg-gradient-to-r from-green-600 to-green-500 rounded-2xl p-8 text-white mb-8 shadow-xl flex flex-col md:flex-row justify-between items-center relative overflow-hidden">
+            <div class="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-white opacity-10 rounded-full"></div>
+            
+            <div class="z-10">
+                <p class="text-green-100 text-lg mb-1">Halo, <span id="userNameDisplay" class="font-bold">Nasabah</span>!</p>
+                <p class="text-sm opacity-80">Total Saldo Tersedia</p>
+                <h2 class="text-4xl md:text-5xl font-bold mt-2" id="userBalanceDisplay">Rp 0</h2>
+            </div>
+            <div class="mt-4 md:mt-0 text-center bg-white/20 p-4 rounded-lg backdrop-blur-sm z-10 border border-white/30">
+                <p class="text-xs font-bold uppercase tracking-wider mb-1">Status Akun</p>
+                <span class="inline-block bg-white text-green-700 text-xs px-3 py-1 rounded-full font-bold shadow-sm">AKTIF</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-bold text-xl text-gray-800 flex items-center gap-2">
+                        📥 Riwayat Setoran
+                    </h3>
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">Terbaru</span>
+                </div>
+                <ul id="transactionList" class="space-y-4 max-h-80 overflow-y-auto pr-2 flex-grow">
+                    <li class="text-center text-gray-400 py-10 flex flex-col items-center">
+                        <span class="text-2xl mb-2">⏳</span>
+                        Memuat data...
+                    </li>
+                </ul>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="font-bold text-xl text-gray-800 mb-6 flex items-center gap-2">
+                    🛍️ Tukar Poin
+                </h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="redeemItem('Token Listrik 20rb', 20000)" class="border border-green-200 p-4 rounded-xl hover:bg-green-50 hover:border-green-500 transition group text-left relative overflow-hidden">
+                        <div class="text-2xl mb-2">⚡</div>
+                        <div class="font-bold text-gray-700 group-hover:text-green-700 text-sm">Token Listrik</div>
+                        <div class="text-green-600 font-bold text-sm">Rp 20.000</div>
+                    </button>
+                    <button onclick="redeemItem('Pulsa All Op 10rb', 10000)" class="border border-green-200 p-4 rounded-xl hover:bg-green-50 hover:border-green-500 transition group text-left">
+                        <div class="text-2xl mb-2">📱</div>
+                        <div class="font-bold text-gray-700 group-hover:text-green-700 text-sm">Pulsa HP</div>
+                        <div class="text-green-600 font-bold text-sm">Rp 10.000</div>
+                    </button>
+                    <button onclick="redeemItem('Voucher PDAM', 50000)" class="border border-green-200 p-4 rounded-xl hover:bg-green-50 hover:border-green-500 transition group text-left">
+                        <div class="text-2xl mb-2">💧</div>
+                        <div class="font-bold text-gray-700 group-hover:text-green-700 text-sm">Air PDAM</div>
+                        <div class="text-green-600 font-bold text-sm">Rp 50.000</div>
+                    </button>
+                    <div class="border border-gray-100 p-4 rounded-xl bg-gray-50 flex flex-col items-center justify-center text-gray-400 text-xs text-center">
+                        <span class="text-xl mb-1">🔜</span>
+                        Segera Hadir
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loginModal" class="hidden fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex justify-center items-center p-4 transition-opacity">
+        <div class="bg-white p-8 rounded-2xl w-full max-w-md shadow-2xl transform transition-all scale-100">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Akses Akun</h2>
+                <button onclick="closeLoginModal()" class="text-gray-400 hover:text-red-500 text-2xl font-bold">&times;</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="email" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition" placeholder="nama@email.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input type="password" id="password" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition" placeholder="••••••••">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button id="btnLogin" onclick="handleLogin()" class="bg-green-700 text-white py-3 rounded-lg font-bold hover:bg-green-800 shadow transition flex justify-center items-center">
+                        MASUK
+                    </button>
+                    <button id="btnRegister" onclick="handleSignUp()" class="bg-white border-2 border-green-700 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex justify-center items-center">
+                        DAFTAR
+                    </button>
+                </div>
+            </div>
+            <div class="mt-6 text-center border-t pt-4">
+                <p class="text-xs text-gray-500">
+                    Belum punya akun? Isi email & password, lalu klik <b>DAFTAR</b>. <br>
+                    Cek email Anda untuk verifikasi.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. KONFIGURASI SUPABASE ---
+        // Variable diganti 'sb' agar tidak bentrok dengan nama library 'supabase'
+        const supabaseUrl = 'https://hajzykbjetgvtnkvwcnx.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhhanp5a2JqZXRndnRua3Z3Y254Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDQyNTYsImV4cCI6MjA4NTc4MDI1Nn0.8NAH1HVwMI5yMlj9UUshRZNx4O1Awxl6OvF3o5adeq4';
+        
+        // Perbaikan di baris ini: menggunakan window.supabase untuk akses library
+        const sb = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        // --- UI Modal Functions (Ditaruh di atas biar pasti terbaca) ---
+        function showLoginModal() { 
+            document.getElementById('loginModal').classList.remove('hidden'); 
+        }
+        function closeLoginModal() { 
+            document.getElementById('loginModal').classList.add('hidden'); 
+        }
+
+        // --- 2. CEK SESI USER (AUTO LOGIN) ---
+        sb.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                try {
+                    const { data: profile, error } = await sb
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (error) throw error;
+
+                    if (profile && profile.role === 'admin') {
+                        window.location.href = 'bankadmin.html';
+                    } else {
+                        setupUserSession(profile);
+                    }
+                } catch (err) {
+                    console.error("Error fetching profile:", err);
+                    if (!localStorage.getItem('retried')) {
+                        localStorage.setItem('retried', 'true');
+                        location.reload();
+                    }
+                }
+            } else if (event === 'SIGNED_OUT') {
+                localStorage.removeItem('retried');
+                showLandingPage();
+            }
+        });
+
+        // --- 3. LOGIKA LOGIN ---
+        async function handleLogin() {
+            setLoading('btnLogin', true);
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            if (!email || !password) {
+                alert("Mohon isi Email dan Password.");
+                setLoading('btnLogin', false);
+                return;
+            }
+
+            const { data, error } = await sb.auth.signInWithPassword({
+                email: email, password: password
+            });
+
+            if (error) {
+                if(error.message.includes("Email not confirmed")) {
+                    alert("🚫 Email belum diverifikasi! Cek kotak masuk/spam email Anda.");
+                } else {
+                    alert("Login Gagal: " + error.message);
+                }
+                setLoading('btnLogin', false);
+            }
+        }
+
+        // --- 4. LOGIKA SIGN UP ---
+        async function handleSignUp() {
+            setLoading('btnRegister', true);
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            if(!email || !password) {
+                alert("Mohon isi Email dan Password untuk mendaftar.");
+                setLoading('btnRegister', false);
+                return;
+            }
+            if(password.length < 6) {
+                alert("Password minimal 6 karakter.");
+                setLoading('btnRegister', false);
+                return;
+            }
+
+            const currentURL = window.location.href.split('?')[0];
+
+            const { data, error } = await sb.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: { full_name: email.split('@')[0] }, 
+                    emailRedirectTo: currentURL
+                }
+            });
+
+            if (error) {
+                alert("Gagal Daftar: " + error.message);
+            } else {
+                alert("✅ Pendaftaran Berhasil!\n\nSilakan CEK EMAIL Anda sekarang (Inbox/Spam) dan klik link konfirmasi untuk mengaktifkan akun.");
+                closeLoginModal();
+                document.getElementById('email').value = '';
+                document.getElementById('password').value = '';
+            }
+            setLoading('btnRegister', false);
+        }
+
+        async function logout() {
+            await sb.auth.signOut();
+            location.reload();
+        }
+
+        // --- 5. LOGIKA DASHBOARD & UI ---
+        function setupUserSession(profile) {
+            document.getElementById('loginModal').classList.add('hidden');
+            document.getElementById('landingPage').classList.add('hidden');
+            document.getElementById('userDashboard').classList.remove('hidden');
+            
+            document.getElementById('navButtons').innerHTML = 
+                `<button onclick="logout()" class="text-white hover:text-red-200 font-medium border border-white/50 px-4 py-1 rounded-full text-sm">Logout</button>`;
+
+            loadUserData(profile);
+        }
+
+        function showLandingPage() {
+            document.getElementById('landingPage').classList.remove('hidden');
+            document.getElementById('userDashboard').classList.add('hidden');
+            document.getElementById('navButtons').innerHTML = 
+                `<button onclick="showLoginModal()" class="bg-white text-green-700 px-5 py-2 rounded-full font-bold hover:bg-green-50 transition shadow-md">Masuk / Daftar</button>`;
+        }
+
+        async function loadUserData(profile) {
+            document.getElementById('userNameDisplay').innerText = profile.full_name || "User";
+            document.getElementById('userBalanceDisplay').innerText = formatRupiah(profile.balance);
+
+            const { data: transactions } = await sb
+                .from('transactions')
+                .select(`*, waste_types(name)`)
+                .eq('user_id', profile.id)
+                .order('created_at', { ascending: false });
+
+            const list = document.getElementById('transactionList');
+            list.innerHTML = '';
+            
+            if(!transactions || transactions.length === 0) {
+                list.innerHTML = `
+                    <li class="text-center text-gray-400 py-6 flex flex-col items-center">
+                        <span class="text-3xl mb-2 opacity-30">📭</span>
+                        <span class="text-sm">Belum ada riwayat setoran sampah.</span>
+                    </li>`;
+            } else {
+                transactions.forEach(trx => {
+                    const date = new Date(trx.created_at).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'});
+                    list.innerHTML += `
+                        <li class="flex justify-between items-center border-b border-gray-100 pb-3 last:border-0 mt-2">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-green-50 text-green-600 p-2 rounded-lg text-lg">♻️</div>
+                                <div>
+                                    <p class="font-bold text-gray-700 text-sm">${trx.waste_types.name}</p>
+                                    <p class="text-xs text-gray-400">${date} • ${trx.weight} Kg</p>
+                                </div>
+                            </div>
+                            <span class="text-green-600 font-bold text-sm">+ ${formatRupiah(trx.total_value)}</span>
+                        </li>
+                    `;
+                });
+            }
+        }
+
+        function redeemItem(itemName, cost) {
+            const currentBalanceText = document.getElementById('userBalanceDisplay').innerText;
+            const currentBalance = parseInt(currentBalanceText.replace(/[^0-9]/g, ''));
+
+            if (currentBalance >= cost) {
+                alert(`✅ Permintaan ${itemName} berhasil dikirim ke Admin!\nSaldo akan dipotong setelah Admin menyetujui.`);
+            } else {
+                alert(`⚠️ Saldo tidak cukup!\nAnda butuh ${formatRupiah(cost)}, saldo saat ini ${formatRupiah(currentBalance)}.`);
+            }
+        }
+
+        function formatRupiah(angka) {
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+        }
+
+        function setLoading(btnId, isLoading) {
+            const btn = document.getElementById(btnId);
+            if(isLoading) {
+                btn.dataset.originalText = btn.innerText;
+                btn.innerText = "Memproses...";
+                btn.disabled = true;
+                btn.classList.add('opacity-70', 'cursor-not-allowed');
+            } else {
+                btn.innerText = btn.dataset.originalText;
+                btn.disabled = false;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+        }
+    </script>
+</body>
+</html>
